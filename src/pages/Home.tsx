@@ -9,16 +9,18 @@ import { AddRouteModal } from '../components/AddRouteModal';
 import { SettingsModal } from '../components/SettingsModal';
 import { StatisticsCards } from '../components/StatisticsCards';
 import { RouteList } from '../components/RouteList';
+import { CommuteCalendar } from '../components/CommuteCalendar';
 import { Map, Plus, Settings } from 'lucide-react';
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const calculateStatistics = useCommuteStore((state) => state.calculateStatistics);
+  const selectedDate = useCommuteStore((state) => state.selectedDate);
 
   useEffect(() => {
     calculateStatistics();
-  }, [calculateStatistics]);
+  }, [calculateStatistics, selectedDate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
@@ -59,6 +61,10 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="mb-6">
           <StatisticsCards />
+        </div>
+
+        <div className="mb-6">
+          <CommuteCalendar />
         </div>
 
         <div className="grid grid-cols-12 gap-6">

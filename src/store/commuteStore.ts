@@ -8,6 +8,7 @@ interface PersistedData {
   routes: CommuteRoute[];
   selectedRouteId: string | null;
   filters: FilterOptions;
+  selectedDate: string | null;
 }
 
 function loadFromStorage(): PersistedData | null {
@@ -24,7 +25,7 @@ function loadFromStorage(): PersistedData | null {
 
 function saveToStorage(data: PersistedData): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, selectedDate: null }));
   } catch (e) {
     console.error('Failed to save data to localStorage:', e);
   }
@@ -43,12 +44,14 @@ interface CommuteState {
   routes: CommuteRoute[];
   selectedRouteId: string | null;
   filters: FilterOptions;
+  selectedDate: string | null;
   statistics: CommuteStatistics;
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
   deleteRoute: (id: string) => void;
   selectRoute: (id: string | null) => void;
   setFilters: (filters: Partial<FilterOptions>) => void;
+  setSelectedDate: (date: string | null) => void;
   getFilteredRoutes: () => CommuteRoute[];
   calculateStatistics: () => void;
   importRoutes: (routes: CommuteRoute[]) => void;
@@ -72,6 +75,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   routes: persistedData?.routes || mockRoutes,
   selectedRouteId: persistedData?.selectedRouteId || null,
   filters: persistedData?.filters || defaultFilters,
+  selectedDate: null,
   statistics: {
     mostStable: null,
     cheapest: null,
@@ -113,9 +117,14 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
   },
 
+  setSelectedDate: (date) => {
+    set({ selectedDate: date });
+  },
+
   getFilteredRoutes: () => {
-    const { routes, filters } = get();
+    const { routes, filters, selectedDate } = get();
     return routes.filter(route => {
+      if (selectedDate && route.date !== selectedDate) return false;
       if (filters.isWeekday !== null && isWeekday(route.date) !== filters.isWeekday) return false;
       if (filters.isWeekend !== null && (!isWeekday(route.date)) !== filters.isWeekend) return false;
       if (filters.transportModes.length > 0 && !filters.transportModes.includes(route.transportMode)) return false;

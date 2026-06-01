@@ -1,8 +1,8 @@
 import { useCommuteStore } from '../store/commuteStore';
-import { BarChart3, Clock, DollarSign, Route } from 'lucide-react';
+import { BarChart3, Clock, DollarSign, Route, CalendarDays } from 'lucide-react';
 
 export function StatisticsCards() {
-  const { statistics } = useCommuteStore();
+  const { statistics, selectedDate } = useCommuteStore();
 
   return (
     <div className="grid grid-cols-4 gap-4">
@@ -41,13 +41,13 @@ export function StatisticsCards() {
 
       <div className="bg-white rounded-xl shadow-lg p-4">
         <div className="flex items-center gap-2 text-purple-600 mb-2">
-          <BarChart3 className="w-5 h-5" />
-          <span className="text-sm font-medium">筛选状态</span>
+          {selectedDate ? <CalendarDays className="w-5 h-5" /> : <BarChart3 className="w-5 h-5" />}
+          <span className="text-sm font-medium">{selectedDate ? '日历筛选' : '筛选状态'}</span>
         </div>
         <div className="text-3xl font-bold text-gray-800">
-          {statistics.totalRoutes > 0 ? '已应用' : '无数据'}
+          {selectedDate ? selectedDate.slice(5) : (statistics.totalRoutes > 0 ? '已应用' : '无数据')}
         </div>
-        <div className="text-xs text-gray-500 mt-1">点击地图选择路线</div>
+        <div className="text-xs text-gray-500 mt-1">{selectedDate ? '点击日历取消' : '点击地图选择路线'}</div>
       </div>
     </div>
   );
