@@ -6,12 +6,14 @@ import { TimeTrendChart } from '../components/TimeTrendChart';
 import { TransportComparison } from '../components/TransportComparison';
 import { RouteDetailsPanel } from '../components/RouteDetailsPanel';
 import { AddRouteModal } from '../components/AddRouteModal';
+import { SettingsModal } from '../components/SettingsModal';
 import { StatisticsCards } from '../components/StatisticsCards';
 import { RouteList } from '../components/RouteList';
-import { Map, Plus } from 'lucide-react';
+import { Map, Plus, Settings } from 'lucide-react';
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const calculateStatistics = useCommuteStore((state) => state.calculateStatistics);
 
   useEffect(() => {
@@ -34,13 +36,22 @@ export default function Home() {
                 <p className="text-sm text-gray-500">分析通勤路线，找到最佳出行方案</p>
               </div>
             </div>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg"
-            >
-              <Plus className="w-5 h-5" />
-              添加路线
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all"
+                title="设置"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg"
+              >
+                <Plus className="w-5 h-5" />
+                添加路线
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -79,6 +90,7 @@ export default function Home() {
       </footer>
 
       <AddRouteModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }

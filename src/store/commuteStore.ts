@@ -2,6 +2,43 @@ import { create } from 'zustand';
 import { CommuteRoute, FilterOptions, CommuteStatistics } from '../types/commute';
 import { mockRoutes } from '../data/mockData';
 
+const STORAGE_KEY = 'commute-data';
+
+interface PersistedData {
+  routes: CommuteRoute[];
+  selectedRouteId: string | null;
+  filters: FilterOptions;
+}
+
+function loadFromStorage(): PersistedData | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load data from localStorage:', e);
+  }
+  return null;
+}
+
+function saveToStorage(data: PersistedData): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to save data to localStorage:', e);
+  }
+}
+
+const defaultFilters: FilterOptions = {
+  isWeekday: null,
+  isWeekend: null,
+  transportModes: [],
+  dateRange: { start: '2024-01-01', end: '2024-12-31' },
+};
+
+const persistedData = loadFromStorage();
+
 interface CommuteState {
   routes: CommuteRoute[];
   selectedRouteId: string | null;
@@ -15,6 +52,7 @@ interface CommuteState {
   getFilteredRoutes: () => CommuteRoute[];
   calculateStatistics: () => void;
   importRoutes: (routes: CommuteRoute[]) => void;
+  resetToMockData: () => void;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -31,14 +69,9 @@ function calculateStandardDeviation(values: number[]): number {
 }
 
 export const useCommuteStore = create<CommuteState>((set, get) => ({
-  routes: mockRoutes,
-  selectedRouteId: null,
-  filters: {
-    isWeekday: null,
-    isWeekend: null,
-    transportModes: [],
-    dateRange: { start: '2024-01-01', end: '2024-12-31' },
-  },
+  routes: persistedData?.routes || mockRoutes,
+  selectedRouteId: persistedData?.selectedRouteId || null,
+  filters: persistedData?.filters || defaultFilters,
   statistics: {
     mostStable: null,
     cheapest: null,
@@ -48,22 +81,37 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     totalRoutes: 0,
   },
 
-  setRoutes: (routes) => set({ routes }),
+  setRoutes: (routes) => {
+    set({ routes });
+    saveToStorage({ routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+  },
 
-  addRoute: (route) => set((state) => ({
-    routes: [...state.routes, route],
-  })),
+  addRoute: (route) => {
+    set((state) => ({
+      routes: [...state.routes, route],
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+  },
 
-  deleteRoute: (id) => set((state) => ({
-    routes: state.routes.filter(r => r.id !== id),
-    selectedRouteId: state.selectedRouteId === id ? null : state.selectedRouteId,
-  })),
+  deleteRoute: (id) => {
+    set((state) => ({
+      routes: state.routes.filter(r => r.id !== id),
+      selectedRouteId: state.selectedRouteId === id ? null : state.selectedRouteId,
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+  },
 
-  selectRoute: (id) => set({ selectedRouteId: id }),
+  selectRoute: (id) => {
+    set({ selectedRouteId: id });
+    saveToStorage({ routes: get().routes, selectedRouteId: id, filters: get().filters });
+  },
 
-  setFilters: (newFilters) => set((state) => ({
-    filters: { ...state.filters, ...newFilters },
-  })),
+  setFilters: (newFilters) => {
+    set((state) => ({
+      filters: { ...state.filters, ...newFilters },
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+  },
 
   getFilteredRoutes: () => {
     const { routes, filters } = get();
@@ -128,7 +176,19 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     });
   },
 
-  importRoutes: (newRoutes) => set((state) => ({
-    routes: [...state.routes, ...newRoutes],
-  })),
+  importRoutes: (newRoutes) => {
+    set((state) => ({
+      routes: [...state.routes, ...newRoutes],
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+  },
+
+  resetToMockData: () => {
+    set({
+      routes: mockRoutes,
+      selectedRouteId: null,
+      filters: defaultFilters,
+    });
+    saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters });
+  },
 }));
