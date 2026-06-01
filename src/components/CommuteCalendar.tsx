@@ -47,9 +47,15 @@ export function CommuteCalendar() {
     return map;
   }, [routes]);
 
-  const now = new Date();
-  const [viewYear, setViewYear] = useState(now.getFullYear());
-  const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const initDate = useMemo(() => {
+    if (routesByDate.size === 0) return new Date();
+    const dates = Array.from(routesByDate.keys()).sort();
+    const firstDate = new Date(dates[0]);
+    return new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+  }, [routesByDate]);
+
+  const [viewYear, setViewYear] = useState(initDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initDate.getMonth());
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDay = getFirstDayOfWeek(viewYear, viewMonth);
@@ -168,7 +174,7 @@ export function CommuteCalendar() {
               key={dateStr}
               onClick={() => handleDayClick(day)}
               className={`
-                aspect-square rounded-lg p-1 flex flex-col items-center justify-center text-center
+                min-h-[5rem] rounded-lg p-1 flex flex-col items-center justify-start text-center
                 transition-all cursor-pointer border-2 relative
                 ${isSelected
                   ? 'border-indigo-500 bg-indigo-50 shadow-md ring-1 ring-indigo-300'
@@ -180,20 +186,24 @@ export function CommuteCalendar() {
                 {day}
               </span>
 
-              {hasData && (
-                <span className={`mt-0.5 text-[10px] leading-none font-semibold rounded px-1 ${countColor(stats.count)}`}>
-                  {stats.count}
-                </span>
-              )}
-
-              {hasData && (
-                <span className="text-[9px] leading-none text-gray-400 mt-0.5 hidden sm:block">
-                  {stats.avgDuration}分
-                </span>
-              )}
-
-              {!hasData && (
-                <span className="text-[9px] leading-none text-gray-300 mt-0.5">-</span>
+              {hasData ? (
+                <>
+                  <span className={`mt-1 text-[10px] leading-none font-semibold rounded px-1 ${countColor(stats.count)}`}>
+                    {stats.count} 次
+                  </span>
+                  <div className="mt-1 flex flex-col items-center gap-0.5 text-[9px] leading-none text-gray-500">
+                    <span className="flex items-center gap-0.5">
+                      <span className="w-1 h-1 rounded-full bg-green-400" />
+                      {stats.avgDuration}分
+                    </span>
+                    <span className="flex items-center gap-0.5">
+                      <span className="w-1 h-1 rounded-full bg-amber-400" />
+                      ¥{stats.avgCost}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-[9px] leading-none text-gray-300 mt-3">-</span>
               )}
             </button>
           );

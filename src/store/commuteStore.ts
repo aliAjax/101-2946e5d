@@ -8,8 +8,9 @@ interface PersistedData {
   routes: CommuteRoute[];
   selectedRouteId: string | null;
   filters: FilterOptions;
-  selectedDate: string | null;
 }
+
+type SaveInput = PersistedData & { selectedDate?: string | null };
 
 function loadFromStorage(): PersistedData | null {
   try {
@@ -23,9 +24,10 @@ function loadFromStorage(): PersistedData | null {
   return null;
 }
 
-function saveToStorage(data: PersistedData): void {
+function saveToStorage(data: SaveInput): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, selectedDate: null }));
+    const { selectedDate: _, ...rest } = data;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
   } catch (e) {
     console.error('Failed to save data to localStorage:', e);
   }
