@@ -20,6 +20,8 @@ export interface FilterOptions {
   transportModes: TransportMode[];
   dateRange: { start: string; end: string };
   onlyFavorites: boolean;
+  origin: string | null;
+  destination: string | null;
 }
 
 export interface FavoriteRoute {

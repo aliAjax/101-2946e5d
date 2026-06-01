@@ -27,8 +27,13 @@ function loadFromStorage(): PersistedData | null {
 
 function saveToStorage(data: SaveInput): void {
   try {
-    const { selectedDate: _, ...rest } = data;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+    const toSave: PersistedData = {
+      routes: data.routes,
+      selectedRouteId: data.selectedRouteId,
+      filters: data.filters,
+      favorites: data.favorites,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch (e) {
     console.error('Failed to save data to localStorage:', e);
   }
@@ -40,6 +45,8 @@ const defaultFilters: FilterOptions = {
   transportModes: [],
   dateRange: { start: '2024-01-01', end: '2024-12-31' },
   onlyFavorites: false,
+  origin: null,
+  destination: null,
 };
 
 const persistedData = loadFromStorage();
@@ -139,6 +146,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       if (filters.isWeekend !== null && (!isWeekday(route.date)) !== filters.isWeekend) return false;
       if (filters.transportModes.length > 0 && !filters.transportModes.includes(route.transportMode)) return false;
       if (route.date < filters.dateRange.start || route.date > filters.dateRange.end) return false;
+      if (filters.origin && route.origin !== filters.origin) return false;
+      if (filters.destination && route.destination !== filters.destination) return false;
       if (filters.onlyFavorites) {
         const isFav = favorites.some(f => 
           f.origin === route.origin && 
@@ -258,7 +267,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   },
 
   toggleFavorite: (route) => {
-    const { isFavorite, addFavorite, removeFavorite } = get();
+    const { addFavorite, removeFavorite } = get();
     const existing = get().favorites.find(f => 
       f.origin === route.origin && 
       f.destination === route.destination && 

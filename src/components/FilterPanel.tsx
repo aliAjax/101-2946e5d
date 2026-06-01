@@ -48,6 +48,8 @@ export function FilterPanel() {
       transportModes: [],
       dateRange: { start: '2024-01-01', end: '2024-12-31' },
       onlyFavorites: false,
+      origin: null,
+      destination: null,
     });
     setTimeout(calculateStatistics, 0);
   };

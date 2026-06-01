@@ -9,6 +9,8 @@ export function FavoritesPanel() {
     setFilters({
       transportModes: [favorite.transportMode],
       onlyFavorites: true,
+      origin: favorite.origin,
+      destination: favorite.destination,
     });
     setTimeout(calculateStatistics, 0);
   };
@@ -17,6 +19,8 @@ export function FavoritesPanel() {
     setFilters({
       onlyFavorites: true,
       transportModes: [],
+      origin: null,
+      destination: null,
     });
     setTimeout(calculateStatistics, 0);
   };
@@ -24,6 +28,8 @@ export function FavoritesPanel() {
   const handleClearFilter = () => {
     setFilters({
       onlyFavorites: false,
+      origin: null,
+      destination: null,
     });
     setTimeout(calculateStatistics, 0);
   };
