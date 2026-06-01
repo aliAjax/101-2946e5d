@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { CommuteRoute, TransportMode, transportModeLabels, transportModeColors } from '../types/commute';
-import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar } from 'lucide-react';
+import { parseCSV, CSVParseResult, CSV_FIELD_LABELS } from '../lib/csvParser';
+import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp } from 'lucide-react';
 
 const locationOptions = [
   { name: '中关村', coords: { lat: 39.98, lng: 116.31 } },
@@ -13,6 +14,14 @@ const locationOptions = [
   { name: '五道口', coords: { lat: 39.99, lng: 116.34 } },
   { name: '东直门', coords: { lat: 39.94, lng: 116.43 } },
 ];
+
+const locationLookup: Record<string, { lat: number; lng: number }> = {};
+locationOptions.forEach((loc) => {
+  locationLookup[loc.name] = loc.coords;
+});
+
+type ImportFormat = 'json' | 'csv';
+type CSVStep = 'input' | 'preview';
 
 export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { addRoute, importRoutes, calculateStatistics } = useCommuteStore();
@@ -29,13 +38,32 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
   const [importText, setImportText] = useState('');
   const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
+  const [importFormat, setImportFormat] = useState<ImportFormat>('json');
+
+  const [csvText, setCsvText] = useState('');
+  const [csvResult, setCsvResult] = useState<CSVParseResult | null>(null);
+  const [csvStep, setCsvStep] = useState<CSVStep>('input');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resetImportState = () => {
+    setImportText('');
+    setCsvText('');
+    setCsvResult(null);
+    setCsvStep('input');
+  };
+
+  const handleClose = () => {
+    resetImportState();
+    setActiveTab('manual');
+    onClose();
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const originLoc = locationOptions.find(l => l.name === formData.origin);
-    const destLoc = locationOptions.find(l => l.name === formData.destination);
-    
+
+    const originLoc = locationOptions.find((l) => l.name === formData.origin);
+    const destLoc = locationOptions.find((l) => l.name === formData.destination);
+
     if (!originLoc || !destLoc) return;
 
     const newRoute: CommuteRoute = {
@@ -54,28 +82,28 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
     addRoute(newRoute);
     calculateStatistics();
-    onClose();
+    handleClose();
   };
 
-  const handleImport = () => {
+  const handleJSONImport = () => {
     try {
       const data = JSON.parse(importText);
       const routes = Array.isArray(data) ? data : [data];
-      
-      const validRoutes = routes.map((r, index) => {
-        const originLoc = locationOptions.find(l => l.name === r.origin) || locationOptions[0];
-        const destLoc = locationOptions.find(l => l.name === r.destination) || locationOptions[1];
-        
+
+      const validRoutes = routes.map((r: Record<string, unknown>, index: number) => {
+        const originLoc = locationOptions.find((l) => l.name === r.origin) || locationOptions[0];
+        const destLoc = locationOptions.find((l) => l.name === r.destination) || locationOptions[1];
+
         return {
           id: `imported-${Date.now()}-${index}`,
           name: `${r.origin} → ${r.destination}`,
-          origin: r.origin,
-          destination: r.destination,
-          transportMode: r.transportMode,
+          origin: r.origin as string,
+          destination: r.destination as string,
+          transportMode: r.transportMode as TransportMode,
           duration: Number(r.duration),
           cost: Number(r.cost),
           crowdLevel: Number(r.crowdLevel),
-          date: r.date,
+          date: r.date as string,
           originCoords: originLoc.coords,
           destCoords: destLoc.coords,
         };
@@ -83,14 +111,46 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
       importRoutes(validRoutes);
       calculateStatistics();
-      setImportText('');
-      onClose();
+      handleClose();
     } catch {
       alert('导入失败，请检查JSON格式');
     }
   };
 
+  const handleCSVParse = () => {
+    const result = parseCSV(csvText, locationLookup);
+    setCsvResult(result);
+    setCsvStep('preview');
+  };
+
+  const handleCSVFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      setCsvText(text);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleCSVConfirmImport = () => {
+    if (!csvResult || csvResult.validRoutes.length === 0) return;
+    importRoutes(csvResult.validRoutes);
+    calculateStatistics();
+    handleClose();
+  };
+
+  const handleCSVBack = () => {
+    setCsvStep('input');
+    setCsvResult(null);
+  };
+
   if (!isOpen) return null;
+
+  const csvSampleHeader = Object.values(CSV_FIELD_LABELS).join(',');
+  const csvSampleRow = '中关村,国贸,subway,45,5,4,2024-01-15';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -102,16 +162,16 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
               <h2 className="text-xl font-bold text-gray-800">添加通勤路线</h2>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
             >
               <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
-          
+
           <div className="flex gap-2 mt-4">
             <button
-              onClick={() => setActiveTab('manual')}
+              onClick={() => { setActiveTab('manual'); resetImportState(); }}
               className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
                 activeTab === 'manual'
                   ? 'bg-blue-600 text-white'
@@ -280,24 +340,220 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
             </form>
           ) : (
             <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
-                  粘贴 JSON 数据
-                </label>
-                <textarea
-                  value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
-                  placeholder={`[\n  {\n    "origin": "中关村",\n    "destination": "国贸",\n    "transportMode": "subway",\n    "duration": 45,\n    "cost": 5,\n    "crowdLevel": 4,\n    "date": "2024-01-15"\n  }\n]`}
-                  rows={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setImportFormat('json'); resetImportState(); }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                    importFormat === 'json'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 inline mr-1" />
+                  JSON
+                </button>
+                <button
+                  onClick={() => { setImportFormat('csv'); resetImportState(); }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                    importFormat === 'csv'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <FileUp className="w-4 h-4 inline mr-1" />
+                  CSV
+                </button>
               </div>
-              <button
-                onClick={handleImport}
-                className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
-              >
-                导入数据
-              </button>
+
+              {importFormat === 'json' ? (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      粘贴 JSON 数据
+                    </label>
+                    <textarea
+                      value={importText}
+                      onChange={(e) => setImportText(e.target.value)}
+                      placeholder={`[\n  {\n    "origin": "中关村",\n    "destination": "国贸",\n    "transportMode": "subway",\n    "duration": 45,\n    "cost": 5,\n    "crowdLevel": 4,\n    "date": "2024-01-15"\n  }\n]`}
+                      rows={10}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={handleJSONImport}
+                    className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    导入数据
+                  </button>
+                </>
+              ) : csvStep === 'input' ? (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        粘贴或上传 CSV 数据
+                      </label>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        <FileUp className="w-3.5 h-3.5" />
+                        上传文件
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv"
+                        onChange={handleCSVFileUpload}
+                        className="hidden"
+                      />
+                    </div>
+                    <textarea
+                      value={csvText}
+                      onChange={(e) => setCsvText(e.target.value)}
+                      placeholder={`${csvSampleHeader}\n${csvSampleRow}`}
+                      rows={8}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <p className="text-xs font-medium text-blue-800 mb-1">CSV 格式说明</p>
+                    <p className="text-xs text-blue-700 mb-1">
+                      表头字段：origin, destination, transportMode, duration, cost, crowdLevel, date
+                    </p>
+                    <p className="text-xs text-blue-600">
+                      transportMode 可选值：subway / bus / car / bike / walk
+                    </p>
+                    <p className="text-xs text-blue-600">
+                      地点名称需匹配：{locationOptions.map((l) => l.name).join('、')}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleCSVParse}
+                    disabled={!csvText.trim()}
+                    className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    解析预览
+                  </button>
+                </>
+              ) : (
+                <>
+                  {csvResult && (
+                    <>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                          <span className="text-sm text-green-800">
+                            有效路线：<strong>{csvResult.validRoutes.length}</strong> 条
+                          </span>
+                        </div>
+
+                        {csvResult.errors.length > 0 && (
+                          <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
+                            <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                            <span className="text-sm text-red-800">
+                              错误行：<strong>{csvResult.errors.length}</strong> 行
+                            </span>
+                          </div>
+                        )}
+
+                        {csvResult.missingFields.length > 0 && (
+                          <div className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm text-amber-800">
+                              <span className="font-medium">缺失字段：</span>
+                              {csvResult.missingFields.map((f) => CSV_FIELD_LABELS[f as keyof typeof CSV_FIELD_LABELS] || f).join('、')}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {csvResult.validRoutes.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-700 mb-2">路线预览</h3>
+                          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-gray-50 sticky top-0">
+                                <tr>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">路线</th>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">方式</th>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">耗时</th>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">费用</th>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">拥挤</th>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">日期</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {csvResult.validRoutes.map((route) => (
+                                  <tr key={route.id} className="border-t border-gray-100 hover:bg-gray-50">
+                                    <td className="px-2 py-1.5 text-gray-800">
+                                      {route.origin} → {route.destination}
+                                    </td>
+                                    <td className="px-2 py-1.5">
+                                      <span
+                                        className="inline-block px-1.5 py-0.5 rounded text-white text-[10px] font-medium"
+                                        style={{ backgroundColor: transportModeColors[route.transportMode] }}
+                                      >
+                                        {transportModeLabels[route.transportMode]}
+                                      </span>
+                                    </td>
+                                    <td className="px-2 py-1.5 text-gray-700">{route.duration}分</td>
+                                    <td className="px-2 py-1.5 text-gray-700">¥{route.cost}</td>
+                                    <td className="px-2 py-1.5 text-gray-700">{route.crowdLevel}</td>
+                                    <td className="px-2 py-1.5 text-gray-600">{route.date}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {csvResult.errors.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-medium text-red-700 mb-2">错误详情</h3>
+                          <div className="border border-red-200 rounded-lg overflow-hidden max-h-32 overflow-y-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-red-50 sticky top-0">
+                                <tr>
+                                  <th className="text-left px-2 py-1.5 text-red-600 font-medium">行号</th>
+                                  <th className="text-left px-2 py-1.5 text-red-600 font-medium">错误信息</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {csvResult.errors.map((err, idx) => (
+                                  <tr key={idx} className="border-t border-red-100">
+                                    <td className="px-2 py-1.5 text-red-700 font-mono">第{err.row}行</td>
+                                    <td className="px-2 py-1.5 text-red-600">{err.message}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCSVBack}
+                          className="flex-1 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                          返回修改
+                        </button>
+                        <button
+                          onClick={handleCSVConfirmImport}
+                          disabled={csvResult.validRoutes.length === 0}
+                          className="flex-1 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                          确认导入 ({csvResult.validRoutes.length} 条)
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
