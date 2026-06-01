@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute } from '../types/commute';
 import { mockRoutes } from '../data/mockData';
 
 const STORAGE_KEY = 'commute-data';
@@ -8,6 +8,7 @@ interface PersistedData {
   routes: CommuteRoute[];
   selectedRouteId: string | null;
   filters: FilterOptions;
+  favorites: FavoriteRoute[];
 }
 
 type SaveInput = PersistedData & { selectedDate?: string | null };
@@ -38,6 +39,7 @@ const defaultFilters: FilterOptions = {
   isWeekend: null,
   transportModes: [],
   dateRange: { start: '2024-01-01', end: '2024-12-31' },
+  onlyFavorites: false,
 };
 
 const persistedData = loadFromStorage();
@@ -48,6 +50,7 @@ interface CommuteState {
   filters: FilterOptions;
   selectedDate: string | null;
   statistics: CommuteStatistics;
+  favorites: FavoriteRoute[];
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
   deleteRoute: (id: string) => void;
@@ -58,6 +61,10 @@ interface CommuteState {
   calculateStatistics: () => void;
   importRoutes: (routes: CommuteRoute[]) => void;
   resetToMockData: () => void;
+  addFavorite: (route: CommuteRoute) => void;
+  removeFavorite: (id: string) => void;
+  isFavorite: (route: CommuteRoute) => boolean;
+  toggleFavorite: (route: CommuteRoute) => void;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -86,17 +93,18 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     avgCost: 0,
     totalRoutes: 0,
   },
+  favorites: persistedData?.favorites || [],
 
   setRoutes: (routes) => {
     set({ routes });
-    saveToStorage({ routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+    saveToStorage({ routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
   },
 
   addRoute: (route) => {
     set((state) => ({
       routes: [...state.routes, route],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
   },
 
   deleteRoute: (id) => {
@@ -104,19 +112,19 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       routes: state.routes.filter(r => r.id !== id),
       selectedRouteId: state.selectedRouteId === id ? null : state.selectedRouteId,
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
   },
 
   selectRoute: (id) => {
     set({ selectedRouteId: id });
-    saveToStorage({ routes: get().routes, selectedRouteId: id, filters: get().filters });
+    saveToStorage({ routes: get().routes, selectedRouteId: id, filters: get().filters, favorites: get().favorites });
   },
 
   setFilters: (newFilters) => {
     set((state) => ({
       filters: { ...state.filters, ...newFilters },
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
   },
 
   setSelectedDate: (date) => {
@@ -124,13 +132,21 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   },
 
   getFilteredRoutes: () => {
-    const { routes, filters, selectedDate } = get();
+    const { routes, filters, selectedDate, favorites } = get();
     return routes.filter(route => {
       if (selectedDate && route.date !== selectedDate) return false;
       if (filters.isWeekday !== null && isWeekday(route.date) !== filters.isWeekday) return false;
       if (filters.isWeekend !== null && (!isWeekday(route.date)) !== filters.isWeekend) return false;
       if (filters.transportModes.length > 0 && !filters.transportModes.includes(route.transportMode)) return false;
       if (route.date < filters.dateRange.start || route.date > filters.dateRange.end) return false;
+      if (filters.onlyFavorites) {
+        const isFav = favorites.some(f => 
+          f.origin === route.origin && 
+          f.destination === route.destination && 
+          f.transportMode === route.transportMode
+        );
+        if (!isFav) return false;
+      }
       return true;
     });
   },
@@ -191,7 +207,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     set((state) => ({
       routes: [...state.routes, ...newRoutes],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
   },
 
   resetToMockData: () => {
@@ -200,6 +216,58 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       selectedRouteId: null,
       filters: defaultFilters,
     });
-    saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters });
+    saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters, favorites: get().favorites });
+  },
+
+  addFavorite: (route) => {
+    const { favorites } = get();
+    const exists = favorites.some(f => 
+      f.origin === route.origin && 
+      f.destination === route.destination && 
+      f.transportMode === route.transportMode
+    );
+    if (exists) return;
+    const newFavorite: FavoriteRoute = {
+      id: `fav-${Date.now()}`,
+      name: route.name,
+      origin: route.origin,
+      destination: route.destination,
+      transportMode: route.transportMode,
+      createdAt: new Date().toISOString(),
+    };
+    set((state) => ({
+      favorites: [...state.favorites, newFavorite],
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+  },
+
+  removeFavorite: (id) => {
+    set((state) => ({
+      favorites: state.favorites.filter(f => f.id !== id),
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+  },
+
+  isFavorite: (route) => {
+    const { favorites } = get();
+    return favorites.some(f => 
+      f.origin === route.origin && 
+      f.destination === route.destination && 
+      f.transportMode === route.transportMode
+    );
+  },
+
+  toggleFavorite: (route) => {
+    const { isFavorite, addFavorite, removeFavorite } = get();
+    const existing = get().favorites.find(f => 
+      f.origin === route.origin && 
+      f.destination === route.destination && 
+      f.transportMode === route.transportMode
+    );
+    if (existing) {
+      removeFavorite(existing.id);
+    } else {
+      addFavorite(route);
+    }
   },
 }));

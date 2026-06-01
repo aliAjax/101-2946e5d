@@ -1,6 +1,6 @@
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeLabels, transportModeColors, TransportMode } from '../types/commute';
-import { Filter, Calendar, Sun, Moon, RefreshCw } from 'lucide-react';
+import { Filter, Calendar, Sun, Moon, RefreshCw, Star } from 'lucide-react';
 
 export function FilterPanel() {
   const { filters, setFilters, calculateStatistics } = useCommuteStore();
@@ -36,12 +36,18 @@ export function FilterPanel() {
     setTimeout(calculateStatistics, 0);
   };
 
+  const handleFavoritesToggle = () => {
+    setFilters({ onlyFavorites: !filters.onlyFavorites });
+    setTimeout(calculateStatistics, 0);
+  };
+
   const resetFilters = () => {
     setFilters({
       isWeekday: null,
       isWeekend: null,
       transportModes: [],
       dateRange: { start: '2024-01-01', end: '2024-12-31' },
+      onlyFavorites: false,
     });
     setTimeout(calculateStatistics, 0);
   };
@@ -145,6 +151,21 @@ export function FilterPanel() {
               );
             })}
           </div>
+        </div>
+
+        <div>
+          <div className="text-sm font-medium text-gray-700 mb-2">收藏筛选</div>
+          <button
+            onClick={handleFavoritesToggle}
+            className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              filters.onlyFavorites
+                ? 'bg-amber-500 text-white shadow-md'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Star className={`w-4 h-4 ${filters.onlyFavorites ? 'fill-white' : ''}`} />
+            {filters.onlyFavorites ? '显示全部路线' : '只显示收藏路线'}
+          </button>
         </div>
       </div>
     </div>

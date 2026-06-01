@@ -10,6 +10,7 @@ import { SettingsModal } from '../components/SettingsModal';
 import { StatisticsCards } from '../components/StatisticsCards';
 import { RouteList } from '../components/RouteList';
 import { CommuteCalendar } from '../components/CommuteCalendar';
+import { FavoritesPanel } from '../components/FavoritesPanel';
 import { Map, Plus, Settings } from 'lucide-react';
 
 export default function Home() {
@@ -70,6 +71,7 @@ export default function Home() {
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-3 space-y-6">
             <FilterPanel />
+            <FavoritesPanel />
             <RouteList />
           </div>
 

@@ -1,11 +1,12 @@
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeColors, transportModeLabels } from '../types/commute';
-import { MapPin, Clock, DollarSign, Users, Calendar, X, Trophy, Zap, Award } from 'lucide-react';
+import { MapPin, Clock, DollarSign, Users, Calendar, X, Trophy, Zap, Award, Star } from 'lucide-react';
 
 export function RouteDetailsPanel() {
-  const { getFilteredRoutes, selectedRouteId, selectRoute, statistics, deleteRoute } = useCommuteStore();
+  const { getFilteredRoutes, selectedRouteId, selectRoute, statistics, deleteRoute, isFavorite, toggleFavorite } = useCommuteStore();
   const filteredRoutes = getFilteredRoutes();
   const selectedRoute = filteredRoutes.find(r => r.id === selectedRouteId);
+  const isCurrentFavorite = selectedRoute ? isFavorite(selectedRoute) : false;
 
   const crowdLevelText = (level: number) => {
     const texts = ['', '非常宽松', '宽松', '适中', '拥挤', '非常拥挤'];
@@ -122,8 +123,20 @@ export function RouteDetailsPanel() {
           </div>
 
           <button
+            onClick={() => selectedRoute && toggleFavorite(selectedRoute)}
+            className={`w-full mt-4 py-2 text-sm rounded-lg transition-colors flex items-center justify-center gap-2 ${
+              isCurrentFavorite
+                ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Star className={`w-4 h-4 ${isCurrentFavorite ? 'fill-amber-500 text-amber-500' : ''}`} />
+            {isCurrentFavorite ? '取消收藏' : '收藏此路线'}
+          </button>
+
+          <button
             onClick={() => deleteRoute(selectedRoute.id)}
-            className="w-full mt-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            className="w-full mt-2 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
           >
             删除此记录
           </button>

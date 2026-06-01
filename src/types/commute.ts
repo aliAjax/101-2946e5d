@@ -19,6 +19,16 @@ export interface FilterOptions {
   isWeekend: boolean | null;
   transportModes: TransportMode[];
   dateRange: { start: string; end: string };
+  onlyFavorites: boolean;
+}
+
+export interface FavoriteRoute {
+  id: string;
+  name: string;
+  origin: string;
+  destination: string;
+  transportMode: TransportMode;
+  createdAt: string;
 }
 
 export interface CommuteStatistics {

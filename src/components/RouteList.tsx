@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeColors, transportModeLabels } from '../types/commute';
-import { List, Clock, DollarSign, Users, MapPin } from 'lucide-react';
+import { List, Clock, DollarSign, Users, MapPin, Star } from 'lucide-react';
 
 export function RouteList() {
-  const { getFilteredRoutes, selectedRouteId, selectRoute } = useCommuteStore();
+  const { getFilteredRoutes, selectedRouteId, selectRoute, isFavorite, toggleFavorite } = useCommuteStore();
   const filteredRoutes = getFilteredRoutes();
 
   const displayedRoutes = useMemo(() => {
@@ -36,12 +36,13 @@ export function RouteList() {
         {displayedRoutes.map((route) => {
           const isSelected = route.id === selectedRouteId;
           const isHighlighted = isRouteHighlighted(route);
+          const isFav = isFavorite(route);
           
           return (
             <div
               key={route.id}
               onClick={() => selectRoute(isSelected ? null : route.id)}
-              className={`p-3 rounded-lg cursor-pointer transition-all border-2 ${
+              className={`p-3 rounded-lg cursor-pointer transition-all border-2 group ${
                 isSelected
                   ? 'border-blue-500 bg-blue-50'
                   : isHighlighted
@@ -59,7 +60,21 @@ export function RouteList() {
                     {transportModeLabels[route.transportMode]}
                   </span>
                 </div>
-                <span className="text-xs text-gray-400">{route.date}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(route);
+                    }}
+                    className={`transition-colors ${
+                      isFav ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400 opacity-0 group-hover:opacity-100'
+                    }`}
+                    title={isFav ? '取消收藏' : '收藏此路线'}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${isFav ? 'fill-amber-500' : ''}`} />
+                  </button>
+                  <span className="text-xs text-gray-400">{route.date}</span>
+                </div>
               </div>
               
               <div className="flex items-center gap-1 text-sm font-medium text-gray-800 mb-2">
