@@ -1,23 +1,36 @@
+import { useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeColors, transportModeLabels } from '../types/commute';
-import { MapPin, Navigation } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 
 export function MapView() {
   const { getFilteredRoutes, selectedRouteId, selectRoute } = useCommuteStore();
   const filteredRoutes = getFilteredRoutes();
 
-  const allLocations = new Map<string, { lat: number; lng: number }>();
-  filteredRoutes.forEach(route => {
-    allLocations.set(route.origin, route.originCoords);
-    allLocations.set(route.destination, route.destCoords);
-  });
+  const selectedRoute = useMemo(() => 
+    filteredRoutes.find(r => r.id === selectedRouteId),
+    [filteredRoutes, selectedRouteId]
+  );
 
-  const latValues = Array.from(allLocations.values()).map(l => l.lat);
-  const lngValues = Array.from(allLocations.values()).map(l => l.lng);
-  const minLat = Math.min(...latValues) - 0.02;
-  const maxLat = Math.max(...latValues) + 0.02;
-  const minLng = Math.min(...lngValues) - 0.02;
-  const maxLng = Math.max(...lngValues) + 0.02;
+  const allLocations = useMemo(() => {
+    const locations = new Map<string, { lat: number; lng: number }>();
+    filteredRoutes.forEach(route => {
+      locations.set(route.origin, route.originCoords);
+      locations.set(route.destination, route.destCoords);
+    });
+    return locations;
+  }, [filteredRoutes]);
+
+  const { minLat, maxLat, minLng, maxLng } = useMemo(() => {
+    const latValues = Array.from(allLocations.values()).map(l => l.lat);
+    const lngValues = Array.from(allLocations.values()).map(l => l.lng);
+    return {
+      minLat: Math.min(...latValues) - 0.02,
+      maxLat: Math.max(...latValues) + 0.02,
+      minLng: Math.min(...lngValues) - 0.02,
+      maxLng: Math.max(...lngValues) + 0.02,
+    };
+  }, [allLocations]);
 
   const latRange = maxLat - minLat;
   const lngRange = maxLng - minLng;
@@ -28,19 +41,35 @@ export function MapView() {
     return { x, y };
   }
 
-  const uniqueRoutes = new Map<string, typeof filteredRoutes[0]>();
-  filteredRoutes.forEach(route => {
-    const key = `${route.origin}-${route.destination}-${route.transportMode}`;
-    if (!uniqueRoutes.has(key)) {
-      uniqueRoutes.set(key, route);
-    }
-  });
+  const uniqueRoutes = useMemo(() => {
+    const unique = new Map<string, { route: typeof filteredRoutes[0]; count: number }>();
+    filteredRoutes.forEach(route => {
+      const key = `${route.origin}-${route.destination}-${route.transportMode}`;
+      if (!unique.has(key)) {
+        unique.set(key, { route, count: 0 });
+      }
+      unique.get(key)!.count += 1;
+    });
+    return unique;
+  }, [filteredRoutes]);
+
+  const isRouteHighlighted = (route: typeof filteredRoutes[0]) => {
+    if (!selectedRoute) return true;
+    return route.transportMode === selectedRoute.transportMode &&
+           route.origin === selectedRoute.origin &&
+           route.destination === selectedRoute.destination;
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 h-full">
       <div className="flex items-center gap-2 mb-4">
         <MapPin className="w-5 h-5 text-blue-600" />
         <h2 className="text-lg font-semibold text-gray-800">路线地图</h2>
+        {selectedRoute && (
+          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+            已选中: {selectedRoute.name}
+          </span>
+        )}
       </div>
       
       <div className="relative w-full h-80 bg-gradient-to-br from-blue-50 to-green-50 rounded-lg overflow-hidden border border-gray-200">
@@ -52,30 +81,47 @@ export function MapView() {
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
           
-          {Array.from(uniqueRoutes.values()).map((route) => {
+          {Array.from(uniqueRoutes.values()).map(({ route, count }) => {
             const origin = toScreenCoords(route.originCoords.lat, route.originCoords.lng, 400, 320);
             const dest = toScreenCoords(route.destCoords.lat, route.destCoords.lng, 400, 320);
-            const isSelected = route.id === selectedRouteId;
+            const highlighted = isRouteHighlighted(route);
             const color = transportModeColors[route.transportMode];
+            const strokeWidth = highlighted ? Math.min(2 + count * 0.5, 6) : 2;
             
             return (
-              <g key={route.id} onClick={() => selectRoute(isSelected ? null : route.id)} className="cursor-pointer">
+              <g 
+                key={`${route.origin}-${route.destination}-${route.transportMode}`} 
+                onClick={() => selectRoute(highlighted && selectedRoute ? null : route.id)} 
+                className="cursor-pointer transition-all"
+              >
                 <line
                   x1={origin.x}
                   y1={origin.y}
                   x2={dest.x}
                   y2={dest.y}
                   stroke={color}
-                  strokeWidth={isSelected ? 4 : 2}
-                  strokeOpacity={isSelected ? 1 : 0.6}
+                  strokeWidth={strokeWidth}
+                  strokeOpacity={highlighted ? 1 : 0.2}
                   strokeDasharray={route.transportMode === 'walk' ? '5,5' : 'none'}
+                  className="transition-all duration-300"
                 />
                 <polygon
                   points={`${dest.x},${dest.y} ${dest.x - 6},${dest.y - 12} ${dest.x + 6},${dest.y - 12}`}
                   fill={color}
-                  opacity={isSelected ? 1 : 0.8}
+                  opacity={highlighted ? 1 : 0.3}
                   transform={`rotate(${Math.atan2(dest.y - origin.y, dest.x - origin.x) * 180 / Math.PI + 90}, ${dest.x}, ${dest.y})`}
+                  className="transition-all duration-300"
                 />
+                {highlighted && count > 1 && (
+                  <text
+                    x={(origin.x + dest.x) / 2}
+                    y={(origin.y + dest.y) / 2 - 8}
+                    textAnchor="middle"
+                    className="text-xs fill-gray-700 font-bold"
+                  >
+                    {count}次
+                  </text>
+                )}
               </g>
             );
           })}

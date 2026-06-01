@@ -1,51 +1,132 @@
 import { useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { useCommuteStore } from '../store/commuteStore';
-import { transportModeColors, transportModeLabels } from '../types/commute';
+import { transportModeColors, transportModeLabels, TransportMode } from '../types/commute';
 import { TrendingUp, Clock } from 'lucide-react';
 
 export function TimeTrendChart() {
-  const { getFilteredRoutes, selectedRouteId, selectRoute } = useCommuteStore();
+  const { getFilteredRoutes, selectedRouteId } = useCommuteStore();
   const filteredRoutes = getFilteredRoutes();
 
+  const selectedRoute = useMemo(() => 
+    filteredRoutes.find(r => r.id === selectedRouteId),
+    [filteredRoutes, selectedRouteId]
+  );
+
   const chartData = useMemo(() => {
-    const dateGroups = new Map<string, { date: string; avgDuration: number; avgCost: number; count: number; routeIds: string[] }>();
+    const dateGroups = new Map<string, {
+      date: string;
+      totalDuration: number;
+      totalCost: number;
+      count: number;
+      byMode: Record<TransportMode, { duration: number; count: number }>;
+      hasSelectedRoute: boolean;
+    }>();
     
+    const initByMode = () => ({
+      subway: { duration: 0, count: 0 },
+      bus: { duration: 0, count: 0 },
+      car: { duration: 0, count: 0 },
+      bike: { duration: 0, count: 0 },
+      walk: { duration: 0, count: 0 },
+    });
+
     filteredRoutes.forEach(route => {
       if (!dateGroups.has(route.date)) {
         dateGroups.set(route.date, {
           date: route.date,
-          avgDuration: 0,
-          avgCost: 0,
+          totalDuration: 0,
+          totalCost: 0,
           count: 0,
-          routeIds: [],
+          byMode: initByMode(),
+          hasSelectedRoute: false,
         });
       }
       const group = dateGroups.get(route.date)!;
-      group.avgDuration += route.duration;
-      group.avgCost += route.cost;
+      group.totalDuration += route.duration;
+      group.totalCost += route.cost;
       group.count += 1;
-      group.routeIds.push(route.id);
+      group.byMode[route.transportMode].duration += route.duration;
+      group.byMode[route.transportMode].count += 1;
+      
+      if (selectedRoute && 
+          route.origin === selectedRoute.origin && 
+          route.destination === selectedRoute.destination &&
+          route.transportMode === selectedRoute.transportMode) {
+        group.hasSelectedRoute = true;
+      }
     });
     
     return Array.from(dateGroups.values())
       .map(g => ({
         date: g.date.slice(5),
-        avgDuration: Math.round(g.avgDuration / g.count),
-        avgCost: Math.round((g.avgCost / g.count) * 100) / 100,
+        avgDuration: Math.round(g.totalDuration / g.count),
+        avgCost: Math.round((g.totalCost / g.count) * 100) / 100,
         count: g.count,
-        routeIds: g.routeIds,
+        subway: g.byMode.subway.count > 0 ? Math.round(g.byMode.subway.duration / g.byMode.subway.count) : null,
+        bus: g.byMode.bus.count > 0 ? Math.round(g.byMode.bus.duration / g.byMode.bus.count) : null,
+        car: g.byMode.car.count > 0 ? Math.round(g.byMode.car.duration / g.byMode.car.count) : null,
+        bike: g.byMode.bike.count > 0 ? Math.round(g.byMode.bike.duration / g.byMode.bike.count) : null,
+        walk: g.byMode.walk.count > 0 ? Math.round(g.byMode.walk.duration / g.byMode.walk.count) : null,
+        hasSelectedRoute: g.hasSelectedRoute,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredRoutes]);
+  }, [filteredRoutes, selectedRoute]);
 
-  const isAnySelected = selectedRouteId !== null;
+  const isModeHighlighted = (mode: TransportMode) => {
+    if (!selectedRoute) return true;
+    return mode === selectedRoute.transportMode;
+  };
+
+  interface TooltipProps {
+    active?: boolean;
+    payload?: Array<{
+      dataKey: string;
+      name: string;
+      value: number;
+      color: string;
+    }>;
+    label?: string;
+  }
+
+  const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
+          <p className="text-sm font-medium text-gray-800 mb-2">日期: {label}</p>
+          {payload.map((entry, index: number) => (
+            <div key={index} className="flex items-center gap-2 text-xs">
+              <div 
+                className="w-3 h-3 rounded-full" 
+                style={{ backgroundColor: entry.color }}
+              />
+              <span className="text-gray-600">
+                {transportModeLabels[entry.dataKey as TransportMode] || entry.name}
+              </span>
+              <span className="font-medium text-gray-800">
+                {entry.value} 分钟
+              </span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 h-full">
       <div className="flex items-center gap-2 mb-4">
         <TrendingUp className="w-5 h-5 text-green-600" />
         <h2 className="text-lg font-semibold text-gray-800">时间趋势</h2>
+        {selectedRoute && (
+          <span 
+            className="text-xs px-2 py-1 rounded-full text-white"
+            style={{ backgroundColor: transportModeColors[selectedRoute.transportMode] }}
+          >
+            {transportModeLabels[selectedRoute.transportMode]}
+          </span>
+        )}
       </div>
       
       <div className="h-64">
@@ -63,25 +144,25 @@ export function TimeTrendChart() {
               axisLine={false}
               label={{ value: '分钟', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#6b7280' } }}
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'white',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-              }}
-              formatter={(value: number) => [`${value} 分钟`, '平均耗时']}
-              labelFormatter={(label) => `日期: ${label}`}
-            />
-            <Line
-              type="monotone"
-              dataKey="avgDuration"
-              stroke="#3B82F6"
-              strokeWidth={2}
-              dot={{ fill: '#3B82F6', r: 4 }}
-              activeDot={{ r: 6, fill: '#2563EB' }}
-              opacity={isAnySelected ? 0.3 : 1}
-            />
+            <Tooltip content={<CustomTooltip />} />
+            {(Object.keys(transportModeLabels) as TransportMode[]).map((mode) => (
+              <Line
+                key={mode}
+                type="monotone"
+                dataKey={mode}
+                name={transportModeLabels[mode]}
+                stroke={transportModeColors[mode]}
+                strokeWidth={isModeHighlighted(mode) ? 3 : 1.5}
+                dot={{ 
+                  fill: transportModeColors[mode], 
+                  r: isModeHighlighted(mode) ? 4 : 2,
+                  opacity: isModeHighlighted(mode) ? 1 : 0.3
+                }}
+                activeDot={{ r: 6 }}
+                opacity={isModeHighlighted(mode) ? 1 : 0.2}
+                connectNulls
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -114,12 +195,15 @@ export function TimeTrendChart() {
                 }}
                 formatter={(value: number) => [`${value} 次`, '通勤次数']}
               />
-              <Bar
-                dataKey="count"
-                fill="#F59E0B"
-                radius={[4, 4, 0, 0]}
-                opacity={isAnySelected ? 0.3 : 1}
-              />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {chartData.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={selectedRoute ? (entry.hasSelectedRoute ? '#F59E0B' : '#FCD34D') : '#F59E0B'}
+                    opacity={selectedRoute ? (entry.hasSelectedRoute ? 1 : 0.3) : 1}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>

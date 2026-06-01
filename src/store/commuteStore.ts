@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, TransportMode, CommuteStatistics } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics } from '../types/commute';
 import { mockRoutes } from '../data/mockData';
 
 interface CommuteState {

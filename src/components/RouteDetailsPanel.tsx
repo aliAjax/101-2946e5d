@@ -1,7 +1,6 @@
-import { useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeColors, transportModeLabels } from '../types/commute';
-import { MapPin, Clock, DollarSign, Users, Calendar, X, TrendingUp, Trophy, Zap, Award } from 'lucide-react';
+import { MapPin, Clock, DollarSign, Users, Calendar, X, Trophy, Zap, Award } from 'lucide-react';
 
 export function RouteDetailsPanel() {
   const { getFilteredRoutes, selectedRouteId, selectRoute, statistics, deleteRoute } = useCommuteStore();

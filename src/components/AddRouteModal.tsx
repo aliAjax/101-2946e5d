@@ -85,7 +85,7 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       calculateStatistics();
       setImportText('');
       onClose();
-    } catch (error) {
+    } catch {
       alert('导入失败，请检查JSON格式');
     }
   };

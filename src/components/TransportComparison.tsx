@@ -8,6 +8,12 @@ export function TransportComparison() {
   const { getFilteredRoutes, selectedRouteId } = useCommuteStore();
   const filteredRoutes = getFilteredRoutes();
 
+  const selectedRoute = useMemo(() => 
+    filteredRoutes.find(r => r.id === selectedRouteId),
+    [filteredRoutes, selectedRouteId]
+  );
+  const selectedMode = selectedRoute?.transportMode;
+
   const comparisonData = useMemo(() => {
     const modeGroups = new Map<TransportMode, { duration: number[]; cost: number[]; crowd: number[]; count: number }>();
     
@@ -33,28 +39,36 @@ export function TransportComparison() {
   }, [filteredRoutes]);
 
   const radarData = useMemo(() => {
-    if (comparisonData.length === 0) return [];
+    const maxDuration = Math.max(...comparisonData.map(x => x.avgDuration));
+    const maxCost = Math.max(1, ...comparisonData.map(x => x.avgCost));
+    const maxCount = Math.max(...comparisonData.map(x => x.count));
     
-    const maxDuration = Math.max(...comparisonData.map(d => d.avgDuration));
-    const maxCost = Math.max(...comparisonData.map(d => d.avgCost));
-    
-    return comparisonData.map(d => ({
-      mode: d.name,
-      speed: Math.round((1 - d.avgDuration / maxDuration) * 100),
-      economy: Math.round((1 - d.avgCost / Math.max(maxCost, 1)) * 100),
-      comfort: Math.round((1 - d.avgCrowd / 5) * 100),
-      frequency: Math.min(Math.round((d.count / comparisonData[0]?.count || 1) * 100), 100),
-    }));
+    return [
+      { subject: '速度', ...Object.fromEntries(comparisonData.map(d => [d.mode, Math.round((1 - d.avgDuration / maxDuration) * 100)])) },
+      { subject: '经济性', ...Object.fromEntries(comparisonData.map(d => [d.mode, Math.round((1 - d.avgCost / maxCost) * 100)])) },
+      { subject: '舒适度', ...Object.fromEntries(comparisonData.map(d => [d.mode, Math.round((1 - d.avgCrowd / 5) * 100)])) },
+      { subject: '频次', ...Object.fromEntries(comparisonData.map(d => [d.mode, Math.min(100, Math.round((d.count / maxCount) * 100))])) },
+    ];
   }, [comparisonData]);
 
-  const selectedRoute = filteredRoutes.find(r => r.id === selectedRouteId);
-  const selectedMode = selectedRoute?.transportMode;
+  const isHighlighted = (mode: TransportMode) => {
+    if (!selectedMode) return true;
+    return mode === selectedMode;
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 h-full">
       <div className="flex items-center gap-2 mb-4">
         <GitCompare className="w-5 h-5 text-purple-600" />
         <h2 className="text-lg font-semibold text-gray-800">交通方式对比</h2>
+        {selectedRoute && (
+          <span 
+            className="text-xs px-2 py-1 rounded-full text-white"
+            style={{ backgroundColor: transportModeColors[selectedRoute.transportMode] }}
+          >
+            {transportModeLabels[selectedRoute.transportMode]}
+          </span>
+        )}
       </div>
       
       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -75,7 +89,7 @@ export function TransportComparison() {
                     <Cell
                       key={`cell-${index}`}
                       fill={transportModeColors[entry.mode]}
-                      opacity={selectedMode ? (entry.mode === selectedMode ? 1 : 0.3) : 1}
+                      opacity={isHighlighted(entry.mode) ? 1 : 0.2}
                     />
                   ))}
                 </Bar>
@@ -101,7 +115,7 @@ export function TransportComparison() {
                     <Cell
                       key={`cell-${index}`}
                       fill={transportModeColors[entry.mode]}
-                      opacity={selectedMode ? (entry.mode === selectedMode ? 1 : 0.3) : 1}
+                      opacity={isHighlighted(entry.mode) ? 1 : 0.2}
                     />
                   ))}
                 </Bar>
@@ -119,17 +133,18 @@ export function TransportComparison() {
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
             <PolarGrid stroke="#e5e7eb" />
-            <PolarAngleAxis dataKey="mode" tick={{ fontSize: 10, fill: '#6b7280' }} />
+            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: '#6b7280' }} />
             <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 8, fill: '#9ca3af' }} />
-            {radarData.map((entry, index) => (
+            {comparisonData.map((d) => (
               <Radar
-                key={entry.mode}
-                name={entry.mode}
-                dataKey={['speed', 'economy', 'comfort', 'frequency'][index % 4]}
-                stroke={transportModeColors[comparisonData[index]?.mode || 'subway']}
-                fill={transportModeColors[comparisonData[index]?.mode || 'subway']}
-                fillOpacity={0.1}
-                strokeWidth={2}
+                key={d.mode}
+                name={d.name}
+                dataKey={d.mode}
+                stroke={transportModeColors[d.mode]}
+                fill={transportModeColors[d.mode]}
+                fillOpacity={isHighlighted(d.mode) ? 0.25 : 0.05}
+                strokeWidth={isHighlighted(d.mode) ? 3 : 1}
+                opacity={isHighlighted(d.mode) ? 1 : 0.3}
               />
             ))}
             <Tooltip
@@ -143,8 +158,12 @@ export function TransportComparison() {
         {comparisonData.map((d) => (
           <div
             key={d.mode}
-            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs"
-            style={{ backgroundColor: `${transportModeColors[d.mode]}20`, color: transportModeColors[d.mode] }}
+            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-all"
+            style={{ 
+              backgroundColor: `${transportModeColors[d.mode]}20`, 
+              color: transportModeColors[d.mode],
+              opacity: isHighlighted(d.mode) ? 1 : 0.4,
+            }}
           >
             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: transportModeColors[d.mode] }} />
             {d.name}: {d.count}次
