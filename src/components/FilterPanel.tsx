@@ -37,7 +37,11 @@ export function FilterPanel() {
   };
 
   const handleFavoritesToggle = () => {
-    setFilters({ onlyFavorites: !filters.onlyFavorites });
+    if (filters.onlyFavorites) {
+      setFilters({ onlyFavorites: false, origin: null, destination: null, transportModes: [] });
+    } else {
+      setFilters({ onlyFavorites: true });
+    }
     setTimeout(calculateStatistics, 0);
   };
 
