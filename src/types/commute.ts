@@ -1,6 +1,13 @@
 export type TransportMode = 'subway' | 'bus' | 'car' | 'bike' | 'walk';
 export type TimeOfDay = 'morning_peak' | 'evening_peak' | 'off_peak' | 'unknown';
 
+export interface Location {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 export interface CommuteRoute {
   id: string;
   name: string;

@@ -9,16 +9,18 @@ import { PeakHourComparison } from '../components/PeakHourComparison';
 import { RouteDetailsPanel } from '../components/RouteDetailsPanel';
 import { AddRouteModal } from '../components/AddRouteModal';
 import { SettingsModal } from '../components/SettingsModal';
+import { LocationManager } from '../components/LocationManager';
 import { StatisticsCards } from '../components/StatisticsCards';
 import { RouteList } from '../components/RouteList';
 import { CommuteCalendar } from '../components/CommuteCalendar';
 import { FavoritesPanel } from '../components/FavoritesPanel';
 import { RouteScoringPanel } from '../components/RouteScoringPanel';
-import { Map, Plus, Settings } from 'lucide-react';
+import { Map, Plus, Settings, Navigation } from 'lucide-react';
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLocationManagerOpen, setIsLocationManagerOpen] = useState(false);
   const calculateStatistics = useCommuteStore((state) => state.calculateStatistics);
   const selectedDate = useCommuteStore((state) => state.selectedDate);
 
@@ -43,6 +45,13 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsLocationManagerOpen(true)}
+                className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all"
+                title="地点管理"
+              >
+                <Navigation className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all"
@@ -103,8 +112,19 @@ export default function Home() {
         </div>
       </footer>
 
-      <AddRouteModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <AddRouteModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)}
+        onOpenLocationManager={() => {
+          setIsModalOpen(false);
+          setIsLocationManagerOpen(true);
+        }}
+      />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <LocationManager 
+        isOpen={isLocationManagerOpen} 
+        onClose={() => setIsLocationManagerOpen(false)} 
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore } from '../types/commute';
-import { mockRoutes } from '../data/mockData';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location } from '../types/commute';
+import { mockRoutes, defaultLocations } from '../data/mockData';
 
 const STORAGE_KEY = 'commute-data';
 
@@ -9,6 +9,7 @@ interface PersistedData {
   selectedRouteId: string | null;
   filters: FilterOptions;
   favorites: FavoriteRoute[];
+  locations: Location[];
 }
 
 type SaveInput = PersistedData & { selectedDate?: string | null };
@@ -25,6 +26,9 @@ function loadFromStorage(): PersistedData | null {
       if (!data.filters.timeOfDay) {
         data.filters.timeOfDay = [];
       }
+      if (!data.locations || data.locations.length === 0) {
+        data.locations = defaultLocations;
+      }
       return data;
     }
   } catch (e) {
@@ -40,6 +44,7 @@ function saveToStorage(data: SaveInput): void {
       selectedRouteId: data.selectedRouteId,
       filters: data.filters,
       favorites: data.favorites,
+      locations: data.locations,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch (e) {
@@ -69,6 +74,7 @@ interface CommuteState {
   favorites: FavoriteRoute[];
   scoringWeights: ScoringWeights;
   routeScores: RouteScore[];
+  locations: Location[];
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
   deleteRoute: (id: string) => void;
@@ -85,6 +91,13 @@ interface CommuteState {
   toggleFavorite: (route: CommuteRoute) => void;
   setScoringWeights: (weights: Partial<ScoringWeights>) => void;
   calculateRouteScores: () => void;
+  addLocation: (location: Omit<Location, 'id'>) => void;
+  updateLocation: (id: string, location: Partial<Omit<Location, 'id'>>) => void;
+  deleteLocation: (id: string) => void;
+  getLocationById: (id: string) => Location | undefined;
+  getLocationByName: (name: string) => Location | undefined;
+  getLocationRouteCount: (locationId: string) => number;
+  resetLocationsToDefault: () => void;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -123,17 +136,18 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   favorites: persistedData?.favorites || [],
   scoringWeights: defaultScoringWeights,
   routeScores: [],
+  locations: persistedData?.locations || defaultLocations,
 
   setRoutes: (routes) => {
     set({ routes });
-    saveToStorage({ routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   addRoute: (route) => {
     set((state) => ({
       routes: [...state.routes, route],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   deleteRoute: (id) => {
@@ -141,23 +155,71 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       routes: state.routes.filter(r => r.id !== id),
       selectedRouteId: state.selectedRouteId === id ? null : state.selectedRouteId,
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   selectRoute: (id) => {
     set({ selectedRouteId: id });
-    saveToStorage({ routes: get().routes, selectedRouteId: id, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes: get().routes, selectedRouteId: id, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   setFilters: (newFilters) => {
     set((state) => ({
       filters: { ...state.filters, ...newFilters },
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   setSelectedDate: (date) => {
     set({ selectedDate: date });
+  },
+
+  addLocation: (location) => {
+    const newLocation: Location = {
+      ...location,
+      id: `loc-${Date.now()}`,
+    };
+    set((state) => ({
+      locations: [...state.locations, newLocation],
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+  },
+
+  updateLocation: (id, location) => {
+    set((state) => ({
+      locations: state.locations.map((loc) =>
+        loc.id === id ? { ...loc, ...location } : loc
+      ),
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+  },
+
+  deleteLocation: (id) => {
+    set((state) => ({
+      locations: state.locations.filter((loc) => loc.id !== id),
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+  },
+
+  getLocationById: (id) => {
+    return get().locations.find((loc) => loc.id === id);
+  },
+
+  getLocationByName: (name) => {
+    return get().locations.find((loc) => loc.name === name);
+  },
+
+  getLocationRouteCount: (locationId) => {
+    const location = get().getLocationById(locationId);
+    if (!location) return 0;
+    return get().routes.filter(
+      (route) => route.origin === location.name || route.destination === location.name
+    ).length;
+  },
+
+  resetLocationsToDefault: () => {
+    set({ locations: defaultLocations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: defaultLocations });
   },
 
   getFilteredRoutes: () => {
@@ -242,7 +304,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     set((state) => ({
       routes: [...state.routes, ...newRoutes],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   resetToMockData: () => {
@@ -250,8 +312,9 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       routes: mockRoutes,
       selectedRouteId: null,
       filters: defaultFilters,
+      locations: defaultLocations,
     });
-    saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters, favorites: get().favorites });
+    saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters, favorites: get().favorites, locations: defaultLocations });
   },
 
   addFavorite: (route) => {
@@ -273,14 +336,14 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     set((state) => ({
       favorites: [...state.favorites, newFavorite],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   removeFavorite: (id) => {
     set((state) => ({
       favorites: state.favorites.filter(f => f.id !== id),
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
   },
 
   isFavorite: (route) => {

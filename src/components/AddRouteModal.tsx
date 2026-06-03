@@ -1,30 +1,38 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { CommuteRoute, TransportMode, TimeOfDay, transportModeLabels, transportModeColors, timeOfDayLabels, timeOfDayColors } from '../types/commute';
 import { parseCSV, CSVParseResult, CSV_FIELD_LABELS } from '../lib/csvParser';
-import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle } from 'lucide-react';
-
-const locationOptions = [
-  { name: '中关村', coords: { lat: 39.98, lng: 116.31 } },
-  { name: '望京', coords: { lat: 39.99, lng: 116.47 } },
-  { name: '国贸', coords: { lat: 39.91, lng: 116.46 } },
-  { name: '西单', coords: { lat: 39.91, lng: 116.37 } },
-  { name: '三里屯', coords: { lat: 39.93, lng: 116.45 } },
-  { name: '西二旗', coords: { lat: 40.05, lng: 116.30 } },
-  { name: '五道口', coords: { lat: 39.99, lng: 116.34 } },
-  { name: '东直门', coords: { lat: 39.94, lng: 116.43 } },
-];
-
-const locationLookup: Record<string, { lat: number; lng: number }> = {};
-locationOptions.forEach((loc) => {
-  locationLookup[loc.name] = loc.coords;
-});
+import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle, Navigation } from 'lucide-react';
 
 type ImportFormat = 'json' | 'csv';
 type CSVStep = 'input' | 'preview';
 
-export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { addRoute, importRoutes, calculateStatistics } = useCommuteStore();
+export function AddRouteModal({ 
+  isOpen, 
+  onClose, 
+  onOpenLocationManager 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void;
+  onOpenLocationManager?: () => void;
+}) {
+  const { addRoute, importRoutes, calculateStatistics, locations, getLocationByName } = useCommuteStore();
+
+  const locationOptions = useMemo(() => 
+    locations.map(loc => ({
+      name: loc.name,
+      coords: { lat: loc.lat, lng: loc.lng }
+    })),
+    [locations]
+  );
+
+  const locationLookup = useMemo(() => {
+    const lookup: Record<string, { lat: number; lng: number }> = {};
+    locations.forEach((loc) => {
+      lookup[loc.name] = { lat: loc.lat, lng: loc.lng };
+    });
+    return lookup;
+  }, [locations]);
 
   const [formData, setFormData] = useState({
     origin: '',
@@ -69,8 +77,8 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const originLoc = locationOptions.find((l) => l.name === formData.origin);
-    const destLoc = locationOptions.find((l) => l.name === formData.destination);
+    const originLoc = getLocationByName(formData.origin);
+    const destLoc = getLocationByName(formData.destination);
 
     if (!originLoc || !destLoc) return;
 
@@ -85,8 +93,8 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       crowdLevel: formData.crowdLevel,
       date: formData.date,
       timeOfDay: formData.timeOfDay,
-      originCoords: originLoc.coords,
-      destCoords: destLoc.coords,
+      originCoords: { lat: originLoc.lat, lng: originLoc.lng },
+      destCoords: { lat: destLoc.lat, lng: destLoc.lng },
     };
 
     addRoute(newRoute);
@@ -100,8 +108,8 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       const routes = Array.isArray(data) ? data : [data];
 
       const validRoutes = routes.map((r: Record<string, unknown>, index: number) => {
-        const originLoc = locationOptions.find((l) => l.name === r.origin) || locationOptions[0];
-        const destLoc = locationOptions.find((l) => l.name === r.destination) || locationOptions[1];
+        const originLoc = getLocationByName(r.origin as string) || locations[0];
+        const destLoc = getLocationByName(r.destination as string) || locations[1];
 
         return {
           id: `imported-${Date.now()}-${index}`,
@@ -114,8 +122,8 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           crowdLevel: Number(r.crowdLevel),
           date: r.date as string,
           timeOfDay: (r.timeOfDay as TimeOfDay) || 'unknown',
-          originCoords: originLoc.coords,
-          destCoords: destLoc.coords,
+          originCoords: { lat: originLoc.lat, lng: originLoc.lng },
+          destCoords: { lat: destLoc.lat, lng: destLoc.lng },
         };
       });
 
@@ -207,12 +215,25 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
         <div className="p-6">
           {activeTab === 'manual' ? (
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-1 text-sm font-medium text-gray-700">
+                  <MapPin className="w-4 h-4" />
+                  地点选择
+                </label>
+                {onOpenLocationManager && (
+                  <button
+                    type="button"
+                    onClick={onOpenLocationManager}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    管理地点
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                    <MapPin className="w-4 h-4" />
-                    出发地
-                  </label>
+                  <label className="text-xs text-gray-500 mb-1 block">出发地</label>
                   <select
                     value={formData.origin}
                     onChange={(e) => setFormData({ ...formData, origin: e.target.value })}
@@ -226,10 +247,7 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                   </select>
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                    <MapPin className="w-4 h-4" />
-                    目的地
-                  </label>
+                  <label className="text-xs text-gray-500 mb-1 block">目的地</label>
                   <select
                     value={formData.destination}
                     onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
@@ -457,9 +475,18 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     <p className="text-xs text-blue-600">
                       transportMode 可选值：subway / bus / car / bike / walk
                     </p>
-                    <p className="text-xs text-blue-600">
+                    <p className="text-xs text-blue-600 mb-1">
                       地点名称需匹配：{locationOptions.map((l) => l.name).join('、')}
                     </p>
+                    {onOpenLocationManager && (
+                      <button
+                        type="button"
+                        onClick={onOpenLocationManager}
+                        className="text-xs text-blue-700 hover:text-blue-900 underline font-medium"
+                      >
+                        管理地点列表 →
+                      </button>
+                    )}
                   </div>
 
                   <button

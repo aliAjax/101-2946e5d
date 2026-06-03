@@ -1,15 +1,20 @@
-import { CommuteRoute, TransportMode, TimeOfDay } from '../types/commute';
+import { CommuteRoute, TransportMode, TimeOfDay, Location } from '../types/commute';
 
-const locations = [
-  { name: '中关村', coords: { lat: 39.98, lng: 116.31 } },
-  { name: '望京', coords: { lat: 39.99, lng: 116.47 } },
-  { name: '国贸', coords: { lat: 39.91, lng: 116.46 } },
-  { name: '西单', coords: { lat: 39.91, lng: 116.37 } },
-  { name: '三里屯', coords: { lat: 39.93, lng: 116.45 } },
-  { name: '西二旗', coords: { lat: 40.05, lng: 116.30 } },
-  { name: '五道口', coords: { lat: 39.99, lng: 116.34 } },
-  { name: '东直门', coords: { lat: 39.94, lng: 116.43 } },
+export const defaultLocations: Location[] = [
+  { id: 'loc-1', name: '中关村', lat: 39.98, lng: 116.31 },
+  { id: 'loc-2', name: '望京', lat: 39.99, lng: 116.47 },
+  { id: 'loc-3', name: '国贸', lat: 39.91, lng: 116.46 },
+  { id: 'loc-4', name: '西单', lat: 39.91, lng: 116.37 },
+  { id: 'loc-5', name: '三里屯', lat: 39.93, lng: 116.45 },
+  { id: 'loc-6', name: '西二旗', lat: 40.05, lng: 116.30 },
+  { id: 'loc-7', name: '五道口', lat: 39.99, lng: 116.34 },
+  { id: 'loc-8', name: '东直门', lat: 39.94, lng: 116.43 },
 ];
+
+const locations = defaultLocations.map(loc => ({
+  name: loc.name,
+  coords: { lat: loc.lat, lng: loc.lng },
+}));
 
 const transportModes: TransportMode[] = ['subway', 'bus', 'car', 'bike', 'walk'];
 const timeOfDayOptions: TimeOfDay[] = ['morning_peak', 'evening_peak', 'off_peak'];
