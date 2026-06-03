@@ -14,6 +14,14 @@ function downloadFile(content: string, filename: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
+function escapeCSVField(value: string | number): string {
+  const str = String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
 function routesToCSV(routes: CommuteRoute[]): string {
   const headers = ['路线名称', '出发地', '目的地', '交通方式', '耗时(分钟)', '费用(元)', '拥挤程度', '日期'];
   const rows = routes.map(r => [
@@ -25,54 +33,45 @@ function routesToCSV(routes: CommuteRoute[]): string {
     r.cost,
     r.crowdLevel,
     r.date,
-  ].join(','));
+  ].map(escapeCSVField).join(','));
   return [headers.join(','), ...rows].join('\n');
 }
 
-function generateSummary(
-  routes: CommuteRoute[],
-  statistics: ReturnType<typeof useCommuteStore.getState>['statistics'],
-): string {
+function generateSummary(routes: CommuteRoute[]): string {
+  const totalRoutes = routes.length;
+  const avgDuration = Math.round(routes.reduce((sum, r) => sum + r.duration, 0) / totalRoutes);
+  const avgCost = Math.round(routes.reduce((sum, r) => sum + r.cost, 0) / totalRoutes * 100) / 100;
+  const fastest = routes.reduce((min, r) => r.duration < min.duration ? r : min, routes[0]);
+  const cheapest = routes.reduce((min, r) => r.cost < min.cost ? r : min, routes[0]);
+
   const lines: string[] = [
     '=== 通勤数据统计摘要 ===',
     '',
-    `总记录数：${statistics.totalRoutes} 条`,
-    `平均耗时：${statistics.avgDuration} 分钟/次`,
-    `平均费用：¥${statistics.avgCost} 元/次`,
+    `总记录数：${totalRoutes} 条`,
+    `平均耗时：${avgDuration} 分钟/次`,
+    `平均费用：¥${avgCost} 元/次`,
+    '',
+    '--- 最快路线 ---',
+    `路线：${fastest.name}`,
+    `交通方式：${transportModeLabels[fastest.transportMode]}`,
+    `耗时：${fastest.duration} 分钟`,
+    `费用：¥${fastest.cost}`,
+    `日期：${fastest.date}`,
+    '',
+    '--- 最省钱路线 ---',
+    `路线：${cheapest.name}`,
+    `交通方式：${transportModeLabels[cheapest.transportMode]}`,
+    `耗时：${cheapest.duration} 分钟`,
+    `费用：¥${cheapest.cost}`,
+    `日期：${cheapest.date}`,
+    '',
+    `导出时间：${new Date().toLocaleString('zh-CN')}`,
   ];
-
-  if (statistics.fastest) {
-    const f = statistics.fastest;
-    lines.push(
-      '',
-      '--- 最快路线 ---',
-      `路线：${f.name}`,
-      `交通方式：${transportModeLabels[f.transportMode]}`,
-      `耗时：${f.duration} 分钟`,
-      `费用：¥${f.cost}`,
-      `日期：${f.date}`,
-    );
-  }
-
-  if (statistics.cheapest) {
-    const c = statistics.cheapest;
-    lines.push(
-      '',
-      '--- 最省钱路线 ---',
-      `路线：${c.name}`,
-      `交通方式：${transportModeLabels[c.transportMode]}`,
-      `耗时：${c.duration} 分钟`,
-      `费用：¥${c.cost}`,
-      `日期：${c.date}`,
-    );
-  }
-
-  lines.push('', `导出时间：${new Date().toLocaleString('zh-CN')}`);
   return lines.join('\n');
 }
 
 export function DataExportPanel() {
-  const { getFilteredRoutes, statistics } = useCommuteStore();
+  const { getFilteredRoutes } = useCommuteStore();
 
   const filteredRoutes = getFilteredRoutes();
   const hasData = filteredRoutes.length > 0;
@@ -92,7 +91,7 @@ export function DataExportPanel() {
 
   const handleExportSummary = () => {
     if (!hasData) return;
-    const summary = generateSummary(filteredRoutes, statistics);
+    const summary = generateSummary(filteredRoutes);
     downloadFile(summary, `通勤摘要_${timestamp}.txt`, 'text/plain;charset=utf-8');
   };
 
