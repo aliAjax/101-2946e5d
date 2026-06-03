@@ -42,6 +42,30 @@ export interface CommuteStatistics {
   totalRoutes: number;
 }
 
+export interface ScoringWeights {
+  time: number;
+  cost: number;
+  comfort: number;
+  stability: number;
+}
+
+export interface RouteScore {
+  key: string;
+  name: string;
+  origin: string;
+  destination: string;
+  transportMode: TransportMode;
+  avgDuration: number;
+  avgCost: number;
+  avgCrowd: number;
+  stabilityScore: number;
+  sampleCount: number;
+  totalScore: number;
+  timeScore: number;
+  costScore: number;
+  comfortScore: number;
+}
+
 export const transportModeLabels: Record<TransportMode, string> = {
   subway: '地铁',
   bus: '公交',

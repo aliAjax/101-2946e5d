@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore } from '../types/commute';
 import { mockRoutes } from '../data/mockData';
 
 const STORAGE_KEY = 'commute-data';
@@ -58,6 +58,8 @@ interface CommuteState {
   selectedDate: string | null;
   statistics: CommuteStatistics;
   favorites: FavoriteRoute[];
+  scoringWeights: ScoringWeights;
+  routeScores: RouteScore[];
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
   deleteRoute: (id: string) => void;
@@ -72,6 +74,8 @@ interface CommuteState {
   removeFavorite: (id: string) => void;
   isFavorite: (route: CommuteRoute) => boolean;
   toggleFavorite: (route: CommuteRoute) => void;
+  setScoringWeights: (weights: Partial<ScoringWeights>) => void;
+  calculateRouteScores: () => void;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -87,6 +91,13 @@ function calculateStandardDeviation(values: number[]): number {
   return Math.sqrt(squaredDiffs.reduce((a, b) => a + b, 0) / values.length);
 }
 
+const defaultScoringWeights: ScoringWeights = {
+  time: 25,
+  cost: 25,
+  comfort: 25,
+  stability: 25,
+};
+
 export const useCommuteStore = create<CommuteState>((set, get) => ({
   routes: persistedData?.routes || mockRoutes,
   selectedRouteId: persistedData?.selectedRouteId || null,
@@ -101,6 +112,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     totalRoutes: 0,
   },
   favorites: persistedData?.favorites || [],
+  scoringWeights: defaultScoringWeights,
+  routeScores: [],
 
   setRoutes: (routes) => {
     set({ routes });
@@ -278,5 +291,94 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     } else {
       addFavorite(route);
     }
+  },
+
+  setScoringWeights: (weights) => {
+    set((state) => ({
+      scoringWeights: { ...state.scoringWeights, ...weights },
+    }));
+    get().calculateRouteScores();
+  },
+
+  calculateRouteScores: () => {
+    const filteredRoutes = get().getFilteredRoutes();
+    const { scoringWeights } = get();
+
+    if (filteredRoutes.length === 0) {
+      set({ routeScores: [] });
+      return;
+    }
+
+    const routeGroups = new Map<string, CommuteRoute[]>();
+    filteredRoutes.forEach(route => {
+      const key = `${route.origin}-${route.destination}-${route.transportMode}`;
+      if (!routeGroups.has(key)) {
+        routeGroups.set(key, []);
+      }
+      routeGroups.get(key)!.push(route);
+    });
+
+    let maxDuration = 0;
+    let maxCost = 0;
+    
+    routeGroups.forEach((routes) => {
+      const avgDuration = routes.reduce((sum, r) => sum + r.duration, 0) / routes.length;
+      const avgCost = routes.reduce((sum, r) => sum + r.cost, 0) / routes.length;
+      maxDuration = Math.max(maxDuration, avgDuration);
+      maxCost = Math.max(maxCost, avgCost);
+    });
+
+    const totalWeight = scoringWeights.time + scoringWeights.cost + scoringWeights.comfort + scoringWeights.stability;
+
+    const scores: RouteScore[] = Array.from(routeGroups.entries()).map(([key, routes]) => {
+      const sampleCount = routes.length;
+      const avgDuration = routes.reduce((sum, r) => sum + r.duration, 0) / sampleCount;
+      const avgCost = routes.reduce((sum, r) => sum + r.cost, 0) / sampleCount;
+      const avgCrowd = routes.reduce((sum, r) => sum + r.crowdLevel, 0) / sampleCount;
+
+      const durations = routes.map(r => r.duration);
+      const stdDev = calculateStandardDeviation(durations);
+
+      const timeScore = maxDuration > 0 ? Math.max(0, 100 - (avgDuration / maxDuration) * 100) : 50;
+      const costScore = maxCost > 0 ? Math.max(0, 100 - (avgCost / maxCost) * 100) : 50;
+      const comfortScore = Math.max(0, 100 - (avgCrowd / 5) * 100);
+      
+      let stabilityScore: number;
+      if (sampleCount < 2) {
+        stabilityScore = 50;
+      } else {
+        const meanDuration = avgDuration;
+        const cv = meanDuration > 0 ? (stdDev / meanDuration) * 100 : 0;
+        stabilityScore = Math.max(0, 100 - cv * 2);
+      }
+
+      const totalScore = (
+        (timeScore * scoringWeights.time) +
+        (costScore * scoringWeights.cost) +
+        (comfortScore * scoringWeights.comfort) +
+        (stabilityScore * scoringWeights.stability)
+      ) / totalWeight;
+
+      return {
+        key,
+        name: routes[0].name,
+        origin: routes[0].origin,
+        destination: routes[0].destination,
+        transportMode: routes[0].transportMode,
+        avgDuration: Math.round(avgDuration),
+        avgCost: Math.round(avgCost * 100) / 100,
+        avgCrowd: Math.round(avgCrowd * 10) / 10,
+        stabilityScore: Math.round(stabilityScore),
+        sampleCount,
+        totalScore: Math.round(totalScore * 10) / 10,
+        timeScore: Math.round(timeScore),
+        costScore: Math.round(costScore),
+        comfortScore: Math.round(comfortScore),
+      };
+    });
+
+    scores.sort((a, b) => b.totalScore - a.totalScore);
+
+    set({ routeScores: scores });
   },
 }));

@@ -12,6 +12,7 @@ import { StatisticsCards } from '../components/StatisticsCards';
 import { RouteList } from '../components/RouteList';
 import { CommuteCalendar } from '../components/CommuteCalendar';
 import { FavoritesPanel } from '../components/FavoritesPanel';
+import { RouteScoringPanel } from '../components/RouteScoringPanel';
 import { Map, Plus, Settings } from 'lucide-react';
 
 export default function Home() {
@@ -85,7 +86,8 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="col-span-3">
+          <div className="col-span-3 space-y-6">
+            <RouteScoringPanel />
             <RouteDetailsPanel />
           </div>
         </div>
