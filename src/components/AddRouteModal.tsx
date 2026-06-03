@@ -105,30 +105,37 @@ export function AddRouteModal({
       const data = JSON.parse(importText);
       const routes = Array.isArray(data) ? data : [data];
 
+      const validTransportModes: TransportMode[] = ['subway', 'bus', 'car', 'bike', 'walk'];
+      const validTimeOfDays: TimeOfDay[] = ['morning_peak', 'evening_peak', 'off_peak', 'unknown'];
+
       const errors: string[] = [];
       const validRoutes: CommuteRoute[] = [];
 
       routes.forEach((r: Record<string, unknown>, index: number) => {
-        const origin = r.origin as string;
-        const destination = r.destination as string;
-        const transportMode = r.transportMode as TransportMode;
+        const origin = String(r.origin ?? '');
+        const destination = String(r.destination ?? '');
+        const transportModeRaw = String(r.transportMode ?? '');
         const duration = Number(r.duration);
         const cost = Number(r.cost);
         const crowdLevel = Number(r.crowdLevel);
-        const date = r.date as string;
-        const timeOfDay = (r.timeOfDay as TimeOfDay) || 'unknown';
+        const date = String(r.date ?? '');
+        const timeOfDayRaw = String(r.timeOfDay ?? 'unknown');
 
         const rowErrors: string[] = [];
 
         if (!origin) rowErrors.push('出发地为空');
         if (!destination) rowErrors.push('目的地为空');
-        if (!transportMode) rowErrors.push('交通方式为空');
+        if (!transportModeRaw) rowErrors.push('交通方式为空');
+        else if (!validTransportModes.includes(transportModeRaw as TransportMode)) 
+          rowErrors.push(`交通方式"${transportModeRaw}"无效，应为: subway/bus/car/bike/walk`);
         if (isNaN(duration) || duration <= 0) rowErrors.push(`耗时"${r.duration}"无效`);
         if (isNaN(cost) || cost < 0) rowErrors.push(`费用"${r.cost}"无效`);
         if (isNaN(crowdLevel) || crowdLevel < 1 || crowdLevel > 5 || !Number.isInteger(crowdLevel)) 
           rowErrors.push(`拥挤程度"${r.crowdLevel}"无效，应为1-5整数`);
         if (!date) rowErrors.push('日期为空');
         else if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) rowErrors.push(`日期"${date}"格式无效，应为YYYY-MM-DD`);
+        if (!validTimeOfDays.includes(timeOfDayRaw as TimeOfDay)) 
+          rowErrors.push(`时间段"${timeOfDayRaw}"无效，应为: morning_peak/evening_peak/off_peak/unknown`);
 
         const originLoc = getLocationByName(origin);
         const destLoc = getLocationByName(destination);
@@ -145,12 +152,12 @@ export function AddRouteModal({
           name: `${origin} → ${destination}`,
           origin,
           destination,
-          transportMode,
+          transportMode: transportModeRaw as TransportMode,
           duration,
           cost,
           crowdLevel,
           date,
-          timeOfDay,
+          timeOfDay: timeOfDayRaw as TimeOfDay,
         });
       });
 
