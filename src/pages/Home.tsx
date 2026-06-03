@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { FilterPanel } from '../components/FilterPanel';
+import { DataExportPanel } from '../components/DataExportPanel';
 import { MapView } from '../components/MapView';
 import { TimeTrendChart } from '../components/TimeTrendChart';
 import { TransportComparison } from '../components/TransportComparison';
@@ -71,6 +72,7 @@ export default function Home() {
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-3 space-y-6">
             <FilterPanel />
+            <DataExportPanel />
             <FavoritesPanel />
             <RouteList />
           </div>
