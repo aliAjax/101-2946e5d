@@ -84,3 +84,17 @@ export const transportModeColors: Record<TransportMode, string> = {
   bike: '#8B5CF6',
   walk: '#EC4899',
 };
+
+export const timeOfDayLabels: Record<TimeOfDay, string> = {
+  morning_peak: '早高峰',
+  evening_peak: '晚高峰',
+  off_peak: '平峰',
+  unknown: '未知',
+};
+
+export const timeOfDayColors: Record<TimeOfDay, string> = {
+  morning_peak: '#EF4444',
+  evening_peak: '#8B5CF6',
+  off_peak: '#22C55E',
+  unknown: '#9CA3AF',
+};

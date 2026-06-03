@@ -1,7 +1,8 @@
-import { CommuteRoute, TransportMode } from '../types/commute';
+import { CommuteRoute, TransportMode, TimeOfDay } from '../types/commute';
 
 export const CSV_REQUIRED_FIELDS = ['origin', 'destination', 'transportMode', 'duration', 'cost', 'crowdLevel', 'date'] as const;
-export type CSVField = (typeof CSV_REQUIRED_FIELDS)[number];
+export const CSV_OPTIONAL_FIELDS = ['timeOfDay'] as const;
+export type CSVField = (typeof CSV_REQUIRED_FIELDS)[number] | (typeof CSV_OPTIONAL_FIELDS)[number];
 
 export const CSV_FIELD_LABELS: Record<CSVField, string> = {
   origin: '出发地',
@@ -11,6 +12,7 @@ export const CSV_FIELD_LABELS: Record<CSVField, string> = {
   cost: '费用(元)',
   crowdLevel: '拥挤程度',
   date: '日期',
+  timeOfDay: '时间段',
 };
 
 const CSV_FIELD_ALIASES: Record<string, CSVField> = {
@@ -21,6 +23,8 @@ const CSV_FIELD_ALIASES: Record<string, CSVField> = {
   cost: 'cost',
   crowdlevel: 'crowdLevel',
   date: 'date',
+  timeofday: 'timeOfDay',
+  'time of day': 'timeOfDay',
   出发地: 'origin',
   目的地: 'destination',
   交通方式: 'transportMode',
@@ -30,6 +34,8 @@ const CSV_FIELD_ALIASES: Record<string, CSVField> = {
   '费用(元)': 'cost',
   拥挤程度: 'crowdLevel',
   日期: 'date',
+  时间段: 'timeOfDay',
+  时段: 'timeOfDay',
 };
 
 export interface CSVRowError {
@@ -57,6 +63,17 @@ const TRANSPORT_MODE_ALIASES: Record<string, TransportMode> = {
   自驾: 'car',
   骑行: 'bike',
   步行: 'walk',
+};
+
+const TIME_OF_DAY_ALIASES: Record<string, TimeOfDay> = {
+  morning_peak: 'morning_peak',
+  evening_peak: 'evening_peak',
+  off_peak: 'off_peak',
+  unknown: 'unknown',
+  早高峰: 'morning_peak',
+  晚高峰: 'evening_peak',
+  平峰: 'off_peak',
+  未知: 'unknown',
 };
 
 interface LocationLookup {
@@ -147,6 +164,10 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
     const costStr = getVal('cost');
     const crowdLevelStr = getVal('crowdLevel');
     const date = getVal('date');
+    const timeOfDayRaw = getVal('timeOfDay');
+    const timeOfDay = timeOfDayRaw 
+      ? (TIME_OF_DAY_ALIASES[timeOfDayRaw] || TIME_OF_DAY_ALIASES[timeOfDayRaw.toLowerCase()] || 'unknown')
+      : 'unknown';
 
     if (!origin) rowErrors.push('出发地为空');
     if (!destination) rowErrors.push('目的地为空');
@@ -191,6 +212,7 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
       cost: Number(costStr),
       crowdLevel: Number(crowdLevelStr),
       date,
+      timeOfDay,
       originCoords: originCoords!,
       destCoords: destCoords!,
     });

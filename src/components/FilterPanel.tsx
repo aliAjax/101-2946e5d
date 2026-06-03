@@ -1,9 +1,18 @@
 import { useCommuteStore } from '../store/commuteStore';
-import { transportModeLabels, transportModeColors, TransportMode } from '../types/commute';
-import { Filter, Calendar, Sun, Moon, RefreshCw, Star } from 'lucide-react';
+import { transportModeLabels, transportModeColors, TransportMode, TimeOfDay, timeOfDayLabels, timeOfDayColors } from '../types/commute';
+import { Filter, Calendar, Sun, Moon, RefreshCw, Star, Clock } from 'lucide-react';
 
 export function FilterPanel() {
   const { filters, setFilters, calculateStatistics } = useCommuteStore();
+
+  const handleTimeOfDayToggle = (time: TimeOfDay) => {
+    const currentTimes = filters.timeOfDay || [];
+    const newTimes = currentTimes.includes(time)
+      ? currentTimes.filter(t => t !== time)
+      : [...currentTimes, time];
+    setFilters({ timeOfDay: newTimes });
+    setTimeout(calculateStatistics, 0);
+  };
 
   const handleTransportModeToggle = (mode: TransportMode) => {
     const currentModes = filters.transportModes;
@@ -54,6 +63,7 @@ export function FilterPanel() {
       onlyFavorites: false,
       origin: null,
       destination: null,
+      timeOfDay: [],
     });
     setTimeout(calculateStatistics, 0);
   };
@@ -153,6 +163,34 @@ export function FilterPanel() {
                     style={{ backgroundColor: isSelected ? 'white' : color }}
                   />
                   {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+            <Clock className="w-4 h-4" />
+            时间段
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(['morning_peak', 'evening_peak', 'off_peak', 'unknown'] as TimeOfDay[]).map((time) => {
+              const isSelected = (filters.timeOfDay || []).includes(time);
+              const color = timeOfDayColors[time];
+              
+              return (
+                <button
+                  key={time}
+                  onClick={() => handleTimeOfDayToggle(time)}
+                  className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition-all ${
+                    isSelected
+                      ? 'shadow-md text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  style={isSelected ? { backgroundColor: color } : {}}
+                >
+                  {timeOfDayLabels[time]}
                 </button>
               );
             })}

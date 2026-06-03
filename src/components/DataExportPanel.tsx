@@ -1,5 +1,5 @@
 import { useCommuteStore } from '../store/commuteStore';
-import { transportModeLabels, CommuteRoute } from '../types/commute';
+import { transportModeLabels, timeOfDayLabels, CommuteRoute } from '../types/commute';
 import { Download, FileJson, FileSpreadsheet, FileText } from 'lucide-react';
 
 function downloadFile(content: string, filename: string, mimeType: string) {
@@ -23,7 +23,7 @@ function escapeCSVField(value: string | number): string {
 }
 
 function routesToCSV(routes: CommuteRoute[]): string {
-  const headers = ['路线名称', '出发地', '目的地', '交通方式', '耗时(分钟)', '费用(元)', '拥挤程度', '日期'];
+  const headers = ['路线名称', '出发地', '目的地', '交通方式', '耗时(分钟)', '费用(元)', '拥挤程度', '时间段', '日期'];
   const rows = routes.map(r => [
     r.name,
     r.origin,
@@ -32,6 +32,7 @@ function routesToCSV(routes: CommuteRoute[]): string {
     r.duration,
     r.cost,
     r.crowdLevel,
+    timeOfDayLabels[r.timeOfDay || 'unknown'],
     r.date,
   ].map(escapeCSVField).join(','));
   return [headers.join(','), ...rows].join('\n');

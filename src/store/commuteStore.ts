@@ -17,7 +17,15 @@ function loadFromStorage(): PersistedData | null {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const data = JSON.parse(stored) as PersistedData;
+      data.routes = data.routes.map(route => ({
+        ...route,
+        timeOfDay: route.timeOfDay || 'unknown',
+      }));
+      if (!data.filters.timeOfDay) {
+        data.filters.timeOfDay = [];
+      }
+      return data;
     }
   } catch (e) {
     console.error('Failed to load data from localStorage:', e);
@@ -47,6 +55,7 @@ const defaultFilters: FilterOptions = {
   onlyFavorites: false,
   origin: null,
   destination: null,
+  timeOfDay: [],
 };
 
 const persistedData = loadFromStorage();
@@ -161,6 +170,10 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       if (route.date < filters.dateRange.start || route.date > filters.dateRange.end) return false;
       if (filters.origin && route.origin !== filters.origin) return false;
       if (filters.destination && route.destination !== filters.destination) return false;
+      if (filters.timeOfDay.length > 0) {
+        const routeTimeOfDay = route.timeOfDay || 'unknown';
+        if (!filters.timeOfDay.includes(routeTimeOfDay)) return false;
+      }
       if (filters.onlyFavorites) {
         const isFav = favorites.some(f => 
           f.origin === route.origin && 

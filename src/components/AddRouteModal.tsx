@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
-import { CommuteRoute, TransportMode, transportModeLabels, transportModeColors } from '../types/commute';
+import { CommuteRoute, TransportMode, TimeOfDay, transportModeLabels, transportModeColors, timeOfDayLabels, timeOfDayColors } from '../types/commute';
 import { parseCSV, CSVParseResult, CSV_FIELD_LABELS } from '../lib/csvParser';
-import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp } from 'lucide-react';
+import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle } from 'lucide-react';
 
 const locationOptions = [
   { name: '中关村', coords: { lat: 39.98, lng: 116.31 } },
@@ -34,7 +34,15 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     cost: 5,
     crowdLevel: 3,
     date: new Date().toISOString().split('T')[0],
+    timeOfDay: 'off_peak' as TimeOfDay,
   });
+
+  const timeOfDayOptions: { value: TimeOfDay; label: string; icon: React.ReactNode }[] = [
+    { value: 'morning_peak', label: '早高峰', icon: <Sun className="w-3 h-3" /> },
+    { value: 'evening_peak', label: '晚高峰', icon: <Sunset className="w-3 h-3" /> },
+    { value: 'off_peak', label: '平峰', icon: <Cloud className="w-3 h-3" /> },
+    { value: 'unknown', label: '未知', icon: <HelpCircle className="w-3 h-3" /> },
+  ];
 
   const [importText, setImportText] = useState('');
   const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
@@ -76,6 +84,7 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       cost: formData.cost,
       crowdLevel: formData.crowdLevel,
       date: formData.date,
+      timeOfDay: formData.timeOfDay,
       originCoords: originLoc.coords,
       destCoords: destLoc.coords,
     };
@@ -104,6 +113,7 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
           cost: Number(r.cost),
           crowdLevel: Number(r.crowdLevel),
           date: r.date as string,
+          timeOfDay: (r.timeOfDay as TimeOfDay) || 'unknown',
           originCoords: originLoc.coords,
           destCoords: destLoc.coords,
         };
@@ -150,7 +160,7 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
   if (!isOpen) return null;
 
   const csvSampleHeader = Object.values(CSV_FIELD_LABELS).join(',');
-  const csvSampleRow = '中关村,国贸,subway,45,5,4,2024-01-15';
+  const csvSampleRow = '中关村,国贸,subway,45,5,4,2024-01-15,morning_peak';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -331,6 +341,28 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 />
               </div>
 
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">时间段</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {timeOfDayOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, timeOfDay: option.value })}
+                      className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg text-xs font-medium transition-all ${
+                        formData.timeOfDay === option.value
+                          ? 'text-white shadow-md'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      style={formData.timeOfDay === option.value ? { backgroundColor: timeOfDayColors[option.value] } : {}}
+                    >
+                      {option.icon}
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <button
                 type="submit"
                 className="w-full py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
@@ -374,7 +406,7 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     <textarea
                       value={importText}
                       onChange={(e) => setImportText(e.target.value)}
-                      placeholder={`[\n  {\n    "origin": "中关村",\n    "destination": "国贸",\n    "transportMode": "subway",\n    "duration": 45,\n    "cost": 5,\n    "crowdLevel": 4,\n    "date": "2024-01-15"\n  }\n]`}
+                      placeholder={`[\n  {\n    "origin": "中关村",\n    "destination": "国贸",\n    "transportMode": "subway",\n    "duration": 45,\n    "cost": 5,\n    "crowdLevel": 4,\n    "date": "2024-01-15",\n    "timeOfDay": "morning_peak"\n  }\n]`}
                       rows={10}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                     />
@@ -482,6 +514,7 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">耗时</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">费用</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">拥挤</th>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">时段</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">日期</th>
                                 </tr>
                               </thead>
@@ -502,6 +535,14 @@ export function AddRouteModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                                     <td className="px-2 py-1.5 text-gray-700">{route.duration}分</td>
                                     <td className="px-2 py-1.5 text-gray-700">¥{route.cost}</td>
                                     <td className="px-2 py-1.5 text-gray-700">{route.crowdLevel}</td>
+                                    <td className="px-2 py-1.5">
+                                      <span
+                                        className="inline-block px-1.5 py-0.5 rounded text-white text-[10px] font-medium"
+                                        style={{ backgroundColor: timeOfDayColors[route.timeOfDay || 'unknown'] }}
+                                      >
+                                        {timeOfDayLabels[route.timeOfDay || 'unknown']}
+                                      </span>
+                                    </td>
                                     <td className="px-2 py-1.5 text-gray-600">{route.date}</td>
                                   </tr>
                                 ))}

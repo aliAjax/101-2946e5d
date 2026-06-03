@@ -1,4 +1,4 @@
-import { CommuteRoute, TransportMode } from '../types/commute';
+import { CommuteRoute, TransportMode, TimeOfDay } from '../types/commute';
 
 const locations = [
   { name: '中关村', coords: { lat: 39.98, lng: 116.31 } },
@@ -12,6 +12,23 @@ const locations = [
 ];
 
 const transportModes: TransportMode[] = ['subway', 'bus', 'car', 'bike', 'walk'];
+const timeOfDayOptions: TimeOfDay[] = ['morning_peak', 'evening_peak', 'off_peak'];
+
+function getTimeOfDayMultipliers(timeOfDay: TimeOfDay, isWeekend: boolean) {
+  if (isWeekend) {
+    return { duration: 0.9, crowd: 0.6 };
+  }
+  switch (timeOfDay) {
+    case 'morning_peak':
+      return { duration: 1.3, crowd: 1.3 };
+    case 'evening_peak':
+      return { duration: 1.25, crowd: 1.25 };
+    case 'off_peak':
+      return { duration: 0.9, crowd: 0.7 };
+    default:
+      return { duration: 1, crowd: 1 };
+  }
+}
 
 function generateRoutes(): CommuteRoute[] {
   const routes: CommuteRoute[] = [];
@@ -31,6 +48,8 @@ function generateRoutes(): CommuteRoute[] {
       }
       
       const mode = transportModes[Math.floor(Math.random() * transportModes.length)];
+      const timeOfDay = timeOfDayOptions[Math.floor(Math.random() * timeOfDayOptions.length)];
+      const multipliers = getTimeOfDayMultipliers(timeOfDay, isWeekend);
       
       let duration: number;
       let cost: number;
@@ -43,19 +62,19 @@ function generateRoutes(): CommuteRoute[] {
       
       switch (mode) {
         case 'subway':
-          duration = Math.round(distance * 3 + 15 + (isWeekend ? -5 : 5) + (Math.random() - 0.5) * 10);
+          duration = Math.round((distance * 3 + 15 + (Math.random() - 0.5) * 10) * multipliers.duration);
           cost = Math.round(distance * 0.5 + 3);
-          crowdLevel = isWeekend ? 3 : 5;
+          crowdLevel = Math.round(5 * multipliers.crowd);
           break;
         case 'bus':
-          duration = Math.round(distance * 5 + 20 + (isWeekend ? -3 : 8) + (Math.random() - 0.5) * 15);
+          duration = Math.round((distance * 5 + 20 + (Math.random() - 0.5) * 15) * multipliers.duration);
           cost = 2;
-          crowdLevel = isWeekend ? 2 : 4;
+          crowdLevel = Math.round(4 * multipliers.crowd);
           break;
         case 'car':
-          duration = Math.round(distance * 2 + 25 + (isWeekend ? -10 : 15) + (Math.random() - 0.5) * 20);
+          duration = Math.round((distance * 2 + 25 + (Math.random() - 0.5) * 20) * multipliers.duration);
           cost = Math.round(distance * 2 + 10);
-          crowdLevel = isWeekend ? 1 : 3;
+          crowdLevel = Math.round(3 * multipliers.crowd);
           break;
         case 'bike':
           duration = Math.round(distance * 8 + 10 + (Math.random() - 0.5) * 5);
@@ -83,6 +102,7 @@ function generateRoutes(): CommuteRoute[] {
         cost: Math.max(0, cost),
         crowdLevel: Math.max(1, Math.min(5, crowdLevel + Math.round((Math.random() - 0.5) * 2))),
         date: dateStr,
+        timeOfDay,
         originCoords: origin.coords,
         destCoords: destination.coords,
       });

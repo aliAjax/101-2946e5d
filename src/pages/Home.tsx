@@ -5,6 +5,7 @@ import { DataExportPanel } from '../components/DataExportPanel';
 import { MapView } from '../components/MapView';
 import { TimeTrendChart } from '../components/TimeTrendChart';
 import { TransportComparison } from '../components/TransportComparison';
+import { PeakHourComparison } from '../components/PeakHourComparison';
 import { RouteDetailsPanel } from '../components/RouteDetailsPanel';
 import { AddRouteModal } from '../components/AddRouteModal';
 import { SettingsModal } from '../components/SettingsModal';
@@ -84,6 +85,7 @@ export default function Home() {
               <TimeTrendChart />
               <TransportComparison />
             </div>
+            <PeakHourComparison />
           </div>
 
           <div className="col-span-3 space-y-6">

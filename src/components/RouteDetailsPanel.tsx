@@ -1,5 +1,5 @@
 import { useCommuteStore } from '../store/commuteStore';
-import { transportModeColors, transportModeLabels } from '../types/commute';
+import { transportModeColors, transportModeLabels, timeOfDayColors, timeOfDayLabels } from '../types/commute';
 import { MapPin, Clock, DollarSign, Users, Calendar, X, Trophy, Zap, Award, Star } from 'lucide-react';
 
 export function RouteDetailsPanel() {
@@ -57,9 +57,17 @@ export function RouteDetailsPanel() {
               >
                 {transportModeLabels[selectedRoute.transportMode]}
               </span>
-              <span className="text-xs text-gray-500">
-                {isWeekend(selectedRoute.date) ? '周末' : '工作日'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                  style={{ backgroundColor: timeOfDayColors[selectedRoute.timeOfDay || 'unknown'] }}
+                >
+                  {timeOfDayLabels[selectedRoute.timeOfDay || 'unknown']}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {isWeekend(selectedRoute.date) ? '周末' : '工作日'}
+                </span>
+              </div>
             </div>
             <h3 className="text-xl font-bold text-gray-800 mb-2">{selectedRoute.name}</h3>
             <div className="text-sm text-gray-500 flex items-center gap-1">
