@@ -22,12 +22,14 @@ function ScoreBar({ value, color, label, icon: Icon }: { value: number; color: s
 function WeightSlider({ 
   label, 
   value, 
+  normalizedPercent,
   onChange, 
   color, 
   icon: Icon 
 }: { 
   label: string; 
   value: number; 
+  normalizedPercent: number;
   onChange: (v: number) => void; 
   color: string;
   icon: React.ElementType;
@@ -39,7 +41,7 @@ function WeightSlider({
           <Icon className="w-3.5 h-3.5" style={{ color }} />
           <span className="text-xs font-medium text-gray-700">{label}</span>
         </div>
-        <span className="text-xs font-bold" style={{ color }}>{value}%</span>
+        <span className="text-xs font-bold" style={{ color }}>{normalizedPercent}%</span>
       </div>
       <input
         type="range"
@@ -119,13 +121,17 @@ export function RouteScoringPanel() {
     calculateRouteScores 
   } = useCommuteStore();
   
+  const filters = useCommuteStore((s) => s.filters);
+  const routes = useCommuteStore((s) => s.routes);
+  const selectedDate = useCommuteStore((s) => s.selectedDate);
+
   const filteredRoutes = getFilteredRoutes();
   const hasData = filteredRoutes.length > 0;
   const hasScores = routeScores.length > 0;
 
   useEffect(() => {
     calculateRouteScores();
-  }, [calculateRouteScores, filteredRoutes.length]);
+  }, [calculateRouteScores, filters, routes, selectedDate]);
 
   const handleWeightChange = (key: keyof typeof scoringWeights, value: number) => {
     setScoringWeights({ [key]: value });
@@ -136,6 +142,10 @@ export function RouteScoringPanel() {
   };
 
   const topRoutes = useMemo(() => routeScores.slice(0, 5), [routeScores]);
+
+  const totalWeight = scoringWeights.time + scoringWeights.cost + scoringWeights.comfort + scoringWeights.stability;
+
+  const normalizePercent = (w: number) => totalWeight > 0 ? Math.round((w / totalWeight) * 100) : 0;
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
@@ -161,6 +171,7 @@ export function RouteScoringPanel() {
           <WeightSlider
             label="更省时间"
             value={scoringWeights.time}
+            normalizedPercent={normalizePercent(scoringWeights.time)}
             onChange={(v) => handleWeightChange('time', v)}
             color="#3B82F6"
             icon={Clock}
@@ -168,6 +179,7 @@ export function RouteScoringPanel() {
           <WeightSlider
             label="更省钱"
             value={scoringWeights.cost}
+            normalizedPercent={normalizePercent(scoringWeights.cost)}
             onChange={(v) => handleWeightChange('cost', v)}
             color="#10B981"
             icon={DollarSign}
@@ -175,6 +187,7 @@ export function RouteScoringPanel() {
           <WeightSlider
             label="更舒适"
             value={scoringWeights.comfort}
+            normalizedPercent={normalizePercent(scoringWeights.comfort)}
             onChange={(v) => handleWeightChange('comfort', v)}
             color="#8B5CF6"
             icon={Heart}
@@ -182,6 +195,7 @@ export function RouteScoringPanel() {
           <WeightSlider
             label="更稳定"
             value={scoringWeights.stability}
+            normalizedPercent={normalizePercent(scoringWeights.stability)}
             onChange={(v) => handleWeightChange('stability', v)}
             color="#F59E0B"
             icon={RefreshCw}

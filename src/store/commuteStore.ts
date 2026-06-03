@@ -352,12 +352,14 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         stabilityScore = Math.max(0, 100 - cv * 2);
       }
 
-      const totalScore = (
-        (timeScore * scoringWeights.time) +
-        (costScore * scoringWeights.cost) +
-        (comfortScore * scoringWeights.comfort) +
-        (stabilityScore * scoringWeights.stability)
-      ) / totalWeight;
+      const totalScore = totalWeight > 0
+        ? (
+            (timeScore * scoringWeights.time) +
+            (costScore * scoringWeights.cost) +
+            (comfortScore * scoringWeights.comfort) +
+            (stabilityScore * scoringWeights.stability)
+          ) / totalWeight
+        : 0;
 
       return {
         key,
@@ -370,7 +372,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         avgCrowd: Math.round(avgCrowd * 10) / 10,
         stabilityScore: Math.round(stabilityScore),
         sampleCount,
-        totalScore: Math.round(totalScore * 10) / 10,
+        totalScore: Math.round(totalScore),
         timeScore: Math.round(timeScore),
         costScore: Math.round(costScore),
         comfortScore: Math.round(comfortScore),
