@@ -1,4 +1,5 @@
 export type TransportMode = 'subway' | 'bus' | 'car' | 'bike' | 'walk';
+export type TimeOfDay = 'morning_peak' | 'evening_peak' | 'off_peak' | 'unknown';
 
 export interface CommuteRoute {
   id: string;
@@ -10,6 +11,7 @@ export interface CommuteRoute {
   cost: number;
   crowdLevel: number;
   date: string;
+  timeOfDay: TimeOfDay;
   originCoords: { lat: number; lng: number };
   destCoords: { lat: number; lng: number };
 }
@@ -22,6 +24,7 @@ export interface FilterOptions {
   onlyFavorites: boolean;
   origin: string | null;
   destination: string | null;
+  timeOfDay: TimeOfDay[];
 }
 
 export interface FavoriteRoute {
