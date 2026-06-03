@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeColors, transportModeLabels } from '../types/commute';
-import { MapPin } from 'lucide-react';
+import { getRouteCoords } from '../lib/utils';
+import { MapPin, AlertTriangle } from 'lucide-react';
 
 export function MapView() {
-  const { getFilteredRoutes, selectedRouteId, selectRoute } = useCommuteStore();
+  const { getFilteredRoutes, selectedRouteId, selectRoute, locations } = useCommuteStore();
   const filteredRoutes = getFilteredRoutes();
 
   const selectedRoute = useMemo(() => 
@@ -13,13 +14,16 @@ export function MapView() {
   );
 
   const allLocations = useMemo(() => {
-    const locations = new Map<string, { lat: number; lng: number }>();
+    const locs = new Map<string, { lat: number; lng: number }>();
     filteredRoutes.forEach(route => {
-      locations.set(route.origin, route.originCoords);
-      locations.set(route.destination, route.destCoords);
+      const coords = getRouteCoords(route, locations);
+      if (coords) {
+        locs.set(route.origin, coords.originCoords);
+        locs.set(route.destination, coords.destCoords);
+      }
     });
-    return locations;
-  }, [filteredRoutes]);
+    return locs;
+  }, [filteredRoutes, locations]);
 
   const { minLat, maxLat, minLng, maxLng } = useMemo(() => {
     const latValues = Array.from(allLocations.values()).map(l => l.lat);
@@ -42,16 +46,17 @@ export function MapView() {
   }
 
   const uniqueRoutes = useMemo(() => {
-    const unique = new Map<string, { route: typeof filteredRoutes[0]; count: number }>();
+    const unique = new Map<string, { route: typeof filteredRoutes[0]; count: number; coords: ReturnType<typeof getRouteCoords> }>();
     filteredRoutes.forEach(route => {
       const key = `${route.origin}-${route.destination}-${route.transportMode}`;
       if (!unique.has(key)) {
-        unique.set(key, { route, count: 0 });
+        const coords = getRouteCoords(route, locations);
+        unique.set(key, { route, count: 0, coords });
       }
       unique.get(key)!.count += 1;
     });
     return unique;
-  }, [filteredRoutes]);
+  }, [filteredRoutes, locations]);
 
   const isRouteHighlighted = (route: typeof filteredRoutes[0]) => {
     if (!selectedRoute) return true;
@@ -59,6 +64,10 @@ export function MapView() {
            route.origin === selectedRoute.origin &&
            route.destination === selectedRoute.destination;
   };
+
+  const invalidRouteCount = useMemo(() => {
+    return filteredRoutes.filter(route => !getRouteCoords(route, locations)).length;
+  }, [filteredRoutes, locations]);
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 h-full">
@@ -72,6 +81,16 @@ export function MapView() {
         )}
       </div>
       
+      {invalidRouteCount > 0 && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800">
+            <p className="font-medium">有 {invalidRouteCount} 条路线的地点不在地点库中</p>
+            <p className="text-amber-600 mt-0.5">这些路线不会在地图上显示，请在地点管理中添加对应地点</p>
+          </div>
+        </div>
+      )}
+      
       <div className="relative w-full h-80 bg-gradient-to-br from-blue-50 to-green-50 rounded-lg overflow-hidden border border-gray-200">
         <svg className="w-full h-full" viewBox="0 0 400 320" preserveAspectRatio="xMidYMid meet">
           <defs>
@@ -81,9 +100,10 @@ export function MapView() {
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
           
-          {Array.from(uniqueRoutes.values()).map(({ route, count }) => {
-            const origin = toScreenCoords(route.originCoords.lat, route.originCoords.lng, 400, 320);
-            const dest = toScreenCoords(route.destCoords.lat, route.destCoords.lng, 400, 320);
+          {Array.from(uniqueRoutes.values()).map(({ route, count, coords }) => {
+            if (!coords) return null;
+            const origin = toScreenCoords(coords.originCoords.lat, coords.originCoords.lng, 400, 320);
+            const dest = toScreenCoords(coords.destCoords.lat, coords.destCoords.lng, 400, 320);
             const highlighted = isRouteHighlighted(route);
             const color = transportModeColors[route.transportMode];
             const strokeWidth = highlighted ? Math.min(2 + count * 0.5, 6) : 2;

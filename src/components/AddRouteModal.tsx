@@ -93,8 +93,6 @@ export function AddRouteModal({
       crowdLevel: formData.crowdLevel,
       date: formData.date,
       timeOfDay: formData.timeOfDay,
-      originCoords: { lat: originLoc.lat, lng: originLoc.lng },
-      destCoords: { lat: destLoc.lat, lng: destLoc.lng },
     };
 
     addRoute(newRoute);
@@ -107,25 +105,64 @@ export function AddRouteModal({
       const data = JSON.parse(importText);
       const routes = Array.isArray(data) ? data : [data];
 
-      const validRoutes = routes.map((r: Record<string, unknown>, index: number) => {
-        const originLoc = getLocationByName(r.origin as string) || locations[0];
-        const destLoc = getLocationByName(r.destination as string) || locations[1];
+      const errors: string[] = [];
+      const validRoutes: CommuteRoute[] = [];
 
-        return {
+      routes.forEach((r: Record<string, unknown>, index: number) => {
+        const origin = r.origin as string;
+        const destination = r.destination as string;
+        const transportMode = r.transportMode as TransportMode;
+        const duration = Number(r.duration);
+        const cost = Number(r.cost);
+        const crowdLevel = Number(r.crowdLevel);
+        const date = r.date as string;
+        const timeOfDay = (r.timeOfDay as TimeOfDay) || 'unknown';
+
+        const rowErrors: string[] = [];
+
+        if (!origin) rowErrors.push('出发地为空');
+        if (!destination) rowErrors.push('目的地为空');
+        if (!transportMode) rowErrors.push('交通方式为空');
+        if (isNaN(duration) || duration <= 0) rowErrors.push(`耗时"${r.duration}"无效`);
+        if (isNaN(cost) || cost < 0) rowErrors.push(`费用"${r.cost}"无效`);
+        if (isNaN(crowdLevel) || crowdLevel < 1 || crowdLevel > 5 || !Number.isInteger(crowdLevel)) 
+          rowErrors.push(`拥挤程度"${r.crowdLevel}"无效，应为1-5整数`);
+        if (!date) rowErrors.push('日期为空');
+        else if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) rowErrors.push(`日期"${date}"格式无效，应为YYYY-MM-DD`);
+
+        const originLoc = getLocationByName(origin);
+        const destLoc = getLocationByName(destination);
+        if (!originLoc) rowErrors.push(`出发地"${origin}"不在地点库中`);
+        if (!destLoc) rowErrors.push(`目的地"${destination}"不在地点库中`);
+
+        if (rowErrors.length > 0) {
+          errors.push(`第${index + 1}条: ${rowErrors.join('；')}`);
+          return;
+        }
+
+        validRoutes.push({
           id: `imported-${Date.now()}-${index}`,
-          name: `${r.origin} → ${r.destination}`,
-          origin: r.origin as string,
-          destination: r.destination as string,
-          transportMode: r.transportMode as TransportMode,
-          duration: Number(r.duration),
-          cost: Number(r.cost),
-          crowdLevel: Number(r.crowdLevel),
-          date: r.date as string,
-          timeOfDay: (r.timeOfDay as TimeOfDay) || 'unknown',
-          originCoords: { lat: originLoc.lat, lng: originLoc.lng },
-          destCoords: { lat: destLoc.lat, lng: destLoc.lng },
-        };
+          name: `${origin} → ${destination}`,
+          origin,
+          destination,
+          transportMode,
+          duration,
+          cost,
+          crowdLevel,
+          date,
+          timeOfDay,
+        });
       });
+
+      if (errors.length > 0) {
+        alert(`导入失败，存在以下错误：\n\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n...还有 ${errors.length - 10} 条错误` : ''}`);
+        return;
+      }
+
+      if (validRoutes.length === 0) {
+        alert('没有有效的路线数据');
+        return;
+      }
 
       importRoutes(validRoutes);
       calculateStatistics();

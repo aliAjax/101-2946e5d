@@ -19,8 +19,6 @@ export interface CommuteRoute {
   crowdLevel: number;
   date: string;
   timeOfDay: TimeOfDay;
-  originCoords: { lat: number; lng: number };
-  destCoords: { lat: number; lng: number };
 }
 
 export interface FilterOptions {

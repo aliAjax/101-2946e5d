@@ -108,8 +108,6 @@ function generateRoutes(): CommuteRoute[] {
         crowdLevel: Math.max(1, Math.min(5, crowdLevel + Math.round((Math.random() - 0.5) * 2))),
         date: dateStr,
         timeOfDay,
-        originCoords: origin.coords,
-        destCoords: destination.coords,
       });
     }
   }

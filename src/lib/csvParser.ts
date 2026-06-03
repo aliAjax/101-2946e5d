@@ -213,8 +213,6 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
       crowdLevel: Number(crowdLevelStr),
       date,
       timeOfDay,
-      originCoords: originCoords!,
-      destCoords: destCoords!,
     });
   }
 
