@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeLabels, transportModeColors, DimensionExplanation, DimensionComparison } from '../types/commute';
-import { X, Clock, DollarSign, Heart, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { X, Clock, DollarSign, Heart, RefreshCw, AlertTriangle, Info } from 'lucide-react';
 
 const dimensionConfig: Record<string, { label: string; icon: React.ElementType; color: string; bgColor: string; diffLabel: string }> = {
   time: { label: '时间', icon: Clock, color: '#3B82F6', bgColor: 'bg-blue-50', diffLabel: '快' },
@@ -112,12 +112,12 @@ function DimensionCard({ explanation, scoringWeights }: { explanation: Dimension
 }
 
 export function ScoreExplanationPanel() {
-  const { selectedScoreKey, setSelectedScoreKey, getScoreExplanation, scoringWeights, routeScores } = useCommuteStore();
+  const { selectedScoreKey, setSelectedScoreKey, getScoreExplanation, scoringWeights } = useCommuteStore();
 
   const explanation = useMemo(() => {
     if (!selectedScoreKey) return null;
     return getScoreExplanation(selectedScoreKey);
-  }, [selectedScoreKey, routeScores, scoringWeights]);
+  }, [selectedScoreKey, getScoreExplanation]);
 
   if (!selectedScoreKey || !explanation) return null;
 

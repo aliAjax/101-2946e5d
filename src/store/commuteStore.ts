@@ -688,7 +688,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   },
 
   getScoreExplanation: (key) => {
-    const { routeScores, scoringWeights } = get();
+    const { routeScores } = get();
     const targetScore = routeScores.find(s => s.key === key);
     if (!targetScore) return null;
 
@@ -708,8 +708,6 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     const sampleCount = targetRoutes.length;
 
     const durations = targetRoutes.map(r => r.duration);
-    const costs = targetRoutes.map(r => r.cost);
-    const crowds = targetRoutes.map(r => r.crowdLevel);
     const stdDev = calculateStandardDeviation(durations);
     const meanDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
 
@@ -750,7 +748,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
           label: s.transportMode === targetScore.transportMode ? '当前方案' : '',
           score,
           rawValue,
-          diff: dimension === 'comfort'
+          diff: dimension === 'comfort' || dimension === 'stability'
             ? rawValue - targetRaw
             : targetRaw - rawValue,
         };
