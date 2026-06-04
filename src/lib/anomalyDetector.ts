@@ -22,6 +22,10 @@ function calculateStats(values: number[]): RouteStats {
   return { mean, stdDev, median };
 }
 
+export function getAnomalyIgnoreKey(routeId: string, type: AnomalyType): string {
+  return `${routeId}-${type}`;
+}
+
 function createAnomaly(
   route: CommuteRoute,
   type: AnomalyType,
@@ -30,7 +34,7 @@ function createAnomaly(
   suggestion: string
 ): AnomalyRecord {
   return {
-    id: `anomaly-${route.id}-${type}-${Date.now()}`,
+    id: `anomaly-${route.id}-${type}`,
     routeId: route.id,
     route,
     type,
@@ -178,18 +182,21 @@ export function detectDurationOutliers(
 export function detectAllAnomalies(
   routes: CommuteRoute[],
   filters: FilterOptions,
-  ignoredAnomalyIds: string[] = []
+  ignoredAnomalyKeys: string[] = []
 ): AnomalyRecord[] {
   const anomalies: AnomalyRecord[] = [];
   const seenRouteAnomalies = new Set<string>();
 
   routes.forEach(route => {
     const checkAndAdd = (anomaly: AnomalyRecord | null) => {
-      if (anomaly && !ignoredAnomalyIds.includes(anomaly.id)) {
-        const key = `${route.id}-${anomaly.type}`;
-        if (!seenRouteAnomalies.has(key)) {
-          seenRouteAnomalies.add(key);
-          anomalies.push(anomaly);
+      if (anomaly) {
+        const ignoreKey = getAnomalyIgnoreKey(route.id, anomaly.type);
+        if (!ignoredAnomalyKeys.includes(ignoreKey)) {
+          const key = `${route.id}-${anomaly.type}`;
+          if (!seenRouteAnomalies.has(key)) {
+            seenRouteAnomalies.add(key);
+            anomalies.push(anomaly);
+          }
         }
       }
     };
@@ -204,7 +211,8 @@ export function detectAllAnomalies(
 
   const durationOutliers = detectDurationOutliers(routes);
   durationOutliers.forEach(anomaly => {
-    if (!ignoredAnomalyIds.includes(anomaly.id)) {
+    const ignoreKey = getAnomalyIgnoreKey(anomaly.routeId, anomaly.type);
+    if (!ignoredAnomalyKeys.includes(ignoreKey)) {
       const key = `${anomaly.routeId}-${anomaly.type}`;
       if (!seenRouteAnomalies.has(key)) {
         seenRouteAnomalies.add(key);

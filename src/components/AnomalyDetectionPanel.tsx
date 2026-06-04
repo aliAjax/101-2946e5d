@@ -33,7 +33,7 @@ type FilterType = 'all' | AnomalyType;
 export function AnomalyDetectionPanel() {
   const { 
     anomalies, 
-    ignoredAnomalyIds,
+    ignoredAnomalyKeys,
     detectAnomalies, 
     ignoreAnomaly, 
     deleteRouteAndAnomalies, 
@@ -390,11 +390,11 @@ export function AnomalyDetectionPanel() {
         )}
       </div>
 
-      {ignoredAnomalyIds.length > 0 && (
+      {ignoredAnomalyKeys.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-100">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">
-              已忽略 <span className="font-medium">{ignoredAnomalyIds.length}</span> 条异常
+              已忽略 <span className="font-medium">{ignoredAnomalyKeys.length}</span> 条异常
             </p>
             <button
               onClick={() => {
