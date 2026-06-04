@@ -103,3 +103,48 @@ export const timeOfDayColors: Record<TimeOfDay, string> = {
   off_peak: '#22C55E',
   unknown: '#9CA3AF',
 };
+
+export type AnomalyType = 
+  | 'negative_cost'
+  | 'invalid_crowd_level'
+  | 'same_origin_destination'
+  | 'date_out_of_range'
+  | 'duration_outlier'
+  | 'invalid_transport_mode'
+  | 'invalid_duration';
+
+export interface AnomalyRecord {
+  id: string;
+  routeId: string;
+  route: CommuteRoute;
+  type: AnomalyType;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  message: string;
+  suggestion: string;
+  detectedAt: string;
+  ignored: boolean;
+}
+
+export const anomalyTypeLabels: Record<AnomalyType, string> = {
+  negative_cost: '费用异常',
+  invalid_crowd_level: '拥挤度异常',
+  same_origin_destination: '起终点相同',
+  date_out_of_range: '日期超出范围',
+  duration_outlier: '耗时异常',
+  invalid_transport_mode: '交通方式异常',
+  invalid_duration: '时长异常',
+};
+
+export const anomalySeverityColors: Record<AnomalyRecord['severity'], string> = {
+  low: '#10B981',
+  medium: '#F59E0B',
+  high: '#EF4444',
+  critical: '#7C2D12',
+};
+
+export const anomalySeverityLabels: Record<AnomalyRecord['severity'], string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  critical: '严重',
+};

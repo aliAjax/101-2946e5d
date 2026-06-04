@@ -15,6 +15,7 @@ import { RouteList } from '../components/RouteList';
 import { CommuteCalendar } from '../components/CommuteCalendar';
 import { FavoritesPanel } from '../components/FavoritesPanel';
 import { RouteScoringPanel } from '../components/RouteScoringPanel';
+import { AnomalyDetectionPanel, AnomalyNotificationBadge, AnomalySlidePanel } from '../components/AnomalyDetectionPanel';
 import { Map, Plus, Settings, Navigation } from 'lucide-react';
 
 export default function Home() {
@@ -45,6 +46,7 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <AnomalyNotificationBadge />
               <button
                 onClick={() => setIsLocationManagerOpen(true)}
                 className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all"
@@ -83,6 +85,7 @@ export default function Home() {
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-3 space-y-6">
             <FilterPanel />
+            <AnomalyDetectionPanel />
             <DataExportPanel />
             <FavoritesPanel />
             <RouteList />
@@ -125,6 +128,7 @@ export default function Home() {
         isOpen={isLocationManagerOpen} 
         onClose={() => setIsLocationManagerOpen(false)} 
       />
+      <AnomalySlidePanel />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
+import { detectAllAnomalies } from '../lib/anomalyDetector';
 
 const STORAGE_KEY = 'commute-data';
 
@@ -10,6 +11,7 @@ interface PersistedData {
   filters: FilterOptions;
   favorites: FavoriteRoute[];
   locations: Location[];
+  ignoredAnomalyIds: string[];
 }
 
 type SaveInput = PersistedData & { selectedDate?: string | null };
@@ -40,6 +42,9 @@ function loadFromStorage(): PersistedData | null {
       if (!data.locations || data.locations.length === 0) {
         data.locations = defaultLocations;
       }
+      if (!data.ignoredAnomalyIds) {
+        data.ignoredAnomalyIds = [];
+      }
       return data;
     }
   } catch (e) {
@@ -56,6 +61,7 @@ function saveToStorage(data: SaveInput): void {
       filters: data.filters,
       favorites: data.favorites,
       locations: data.locations,
+      ignoredAnomalyIds: data.ignoredAnomalyIds,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch (e) {
@@ -86,6 +92,9 @@ interface CommuteState {
   scoringWeights: ScoringWeights;
   routeScores: RouteScore[];
   locations: Location[];
+  anomalies: AnomalyRecord[];
+  ignoredAnomalyIds: string[];
+  isAnomalyPanelOpen: boolean;
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
   deleteRoute: (id: string) => void;
@@ -109,6 +118,13 @@ interface CommuteState {
   getLocationByName: (name: string) => Location | undefined;
   getLocationRouteCount: (locationId: string) => number;
   resetLocationsToDefault: () => void;
+  detectAnomalies: () => void;
+  ignoreAnomaly: (anomalyId: string) => void;
+  unignoreAnomaly: (anomalyId: string) => void;
+  clearIgnoredAnomalies: () => void;
+  deleteRouteAndAnomalies: (routeId: string) => void;
+  setAnomalyPanelOpen: (open: boolean) => void;
+  focusRoute: (routeId: string) => void;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -148,18 +164,21 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   scoringWeights: defaultScoringWeights,
   routeScores: [],
   locations: persistedData?.locations || defaultLocations,
+  anomalies: [],
+  ignoredAnomalyIds: persistedData?.ignoredAnomalyIds || [],
+  isAnomalyPanelOpen: false,
 
   setRoutes: (routes) => {
     const sanitizedRoutes = routes.map(sanitizeRoute);
     set({ routes: sanitizedRoutes });
-    saveToStorage({ routes: sanitizedRoutes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: sanitizedRoutes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   addRoute: (route) => {
     set((state) => ({
       routes: [...state.routes, sanitizeRoute(route)],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   deleteRoute: (id) => {
@@ -167,19 +186,19 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       routes: state.routes.filter(r => r.id !== id),
       selectedRouteId: state.selectedRouteId === id ? null : state.selectedRouteId,
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   selectRoute: (id) => {
     set({ selectedRouteId: id });
-    saveToStorage({ routes: get().routes, selectedRouteId: id, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: id, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   setFilters: (newFilters) => {
     set((state) => ({
       filters: { ...state.filters, ...newFilters },
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   setSelectedDate: (date) => {
@@ -194,7 +213,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     set((state) => ({
       locations: [...state.locations, newLocation],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   updateLocation: (id, location) => {
@@ -250,14 +269,14 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         favorites: newFavorites,
       };
     });
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   deleteLocation: (id) => {
     set((state) => ({
       locations: state.locations.filter((loc) => loc.id !== id),
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   getLocationById: (id) => {
@@ -278,7 +297,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   resetLocationsToDefault: () => {
     set({ locations: defaultLocations });
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: defaultLocations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: defaultLocations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   getFilteredRoutes: () => {
@@ -363,7 +382,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     set((state) => ({
       routes: [...state.routes, ...newRoutes.map(sanitizeRoute)],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   resetToMockData: () => {
@@ -373,7 +392,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       filters: defaultFilters,
       locations: defaultLocations,
     });
-    saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters, favorites: get().favorites, locations: defaultLocations });
+    saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters, favorites: get().favorites, locations: defaultLocations, ignoredAnomalyIds: [] });
   },
 
   addFavorite: (route) => {
@@ -395,14 +414,14 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     set((state) => ({
       favorites: [...state.favorites, newFavorite],
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   removeFavorite: (id) => {
     set((state) => ({
       favorites: state.favorites.filter(f => f.id !== id),
     }));
-    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyIds: get().ignoredAnomalyIds });
   },
 
   isFavorite: (route) => {
@@ -517,5 +536,98 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     scores.sort((a, b) => b.totalScore - a.totalScore);
 
     set({ routeScores: scores });
+  },
+
+  detectAnomalies: () => {
+    const { routes, filters, ignoredAnomalyIds } = get();
+    const anomalies = detectAllAnomalies(routes, filters, ignoredAnomalyIds);
+    set({ anomalies });
+  },
+
+  ignoreAnomaly: (anomalyId) => {
+    set((state) => ({
+      ignoredAnomalyIds: [...state.ignoredAnomalyIds, anomalyId],
+      anomalies: state.anomalies.filter(a => a.id !== anomalyId),
+    }));
+    saveToStorage({
+      routes: get().routes,
+      selectedRouteId: get().selectedRouteId,
+      filters: get().filters,
+      favorites: get().favorites,
+      locations: get().locations,
+      ignoredAnomalyIds: get().ignoredAnomalyIds,
+    });
+  },
+
+  unignoreAnomaly: (anomalyId) => {
+    set((state) => ({
+      ignoredAnomalyIds: state.ignoredAnomalyIds.filter(id => id !== anomalyId),
+    }));
+    saveToStorage({
+      routes: get().routes,
+      selectedRouteId: get().selectedRouteId,
+      filters: get().filters,
+      favorites: get().favorites,
+      locations: get().locations,
+      ignoredAnomalyIds: get().ignoredAnomalyIds,
+    });
+    get().detectAnomalies();
+  },
+
+  clearIgnoredAnomalies: () => {
+    set({ ignoredAnomalyIds: [] });
+    saveToStorage({
+      routes: get().routes,
+      selectedRouteId: get().selectedRouteId,
+      filters: get().filters,
+      favorites: get().favorites,
+      locations: get().locations,
+      ignoredAnomalyIds: [],
+    });
+    get().detectAnomalies();
+  },
+
+  deleteRouteAndAnomalies: (routeId) => {
+    set((state) => ({
+      routes: state.routes.filter(r => r.id !== routeId),
+      selectedRouteId: state.selectedRouteId === routeId ? null : state.selectedRouteId,
+      anomalies: state.anomalies.filter(a => a.routeId !== routeId),
+    }));
+    saveToStorage({
+      routes: get().routes,
+      selectedRouteId: get().selectedRouteId,
+      filters: get().filters,
+      favorites: get().favorites,
+      locations: get().locations,
+      ignoredAnomalyIds: get().ignoredAnomalyIds,
+    });
+  },
+
+  setAnomalyPanelOpen: (open) => {
+    set({ isAnomalyPanelOpen: open });
+  },
+
+  focusRoute: (routeId) => {
+    const route = get().routes.find(r => r.id === routeId);
+    if (route) {
+      set({
+        selectedRouteId: routeId,
+        selectedDate: route.date,
+        filters: {
+          ...get().filters,
+          origin: route.origin,
+          destination: route.destination,
+          transportModes: [route.transportMode],
+        },
+      });
+      saveToStorage({
+        routes: get().routes,
+        selectedRouteId: get().selectedRouteId,
+        filters: get().filters,
+        favorites: get().favorites,
+        locations: get().locations,
+        ignoredAnomalyIds: get().ignoredAnomalyIds,
+      });
+    }
   },
 }));
