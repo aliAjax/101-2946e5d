@@ -2,23 +2,23 @@ import { useState, useRef, useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { CommuteRoute, TransportMode, TimeOfDay, transportModeLabels, transportModeColors, timeOfDayLabels, timeOfDayColors } from '../types/commute';
 import { parseCSV, CSVParseResult, CSV_FIELD_LABELS } from '../lib/csvParser';
-import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle, Navigation } from 'lucide-react';
+import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle, Navigation, EyeOff, Eye } from 'lucide-react';
 
 type ImportFormat = 'json' | 'csv';
 type CSVStep = 'input' | 'preview';
 
-export function AddRouteModal({ 
-  isOpen, 
-  onClose, 
-  onOpenLocationManager 
-}: { 
-  isOpen: boolean; 
+export function AddRouteModal({
+  isOpen,
+  onClose,
+  onOpenLocationManager
+}: {
+  isOpen: boolean;
   onClose: () => void;
   onOpenLocationManager?: () => void;
 }) {
-  const { addRoute, importRoutes, calculateStatistics, locations, getLocationByName } = useCommuteStore();
+  const { addRoute, importRoutes, calculateStatistics, detectAnomalies, addLocation, locations, getLocationByName } = useCommuteStore();
 
-  const locationOptions = useMemo(() => 
+  const locationOptions = useMemo(() =>
     locations.map(loc => ({
       name: loc.name,
       coords: { lat: loc.lat, lng: loc.lng }
@@ -59,6 +59,10 @@ export function AddRouteModal({
   const [csvText, setCsvText] = useState('');
   const [csvResult, setCsvResult] = useState<CSVParseResult | null>(null);
   const [csvStep, setCsvStep] = useState<CSVStep>('input');
+  const [selectedValidIds, setSelectedValidIds] = useState<Set<string>>(new Set());
+  const [unknownLocationCoords, setUnknownLocationCoords] = useState<Record<string, { lat: string; lng: string }>>({});
+  const [skippedUnknownLocations, setSkippedUnknownLocations] = useState<Set<string>>(new Set());
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resetImportState = () => {
@@ -66,6 +70,10 @@ export function AddRouteModal({
     setCsvText('');
     setCsvResult(null);
     setCsvStep('input');
+    setSelectedValidIds(new Set());
+    setUnknownLocationCoords({});
+    setSkippedUnknownLocations(new Set());
+    setShowErrorDetails(false);
   };
 
   const handleClose = () => {
@@ -97,6 +105,7 @@ export function AddRouteModal({
 
     addRoute(newRoute);
     calculateStatistics();
+    detectAnomalies();
     handleClose();
   };
 
@@ -126,15 +135,15 @@ export function AddRouteModal({
         if (!origin) rowErrors.push('出发地为空');
         if (!destination) rowErrors.push('目的地为空');
         if (!transportModeRaw) rowErrors.push('交通方式为空');
-        else if (!validTransportModes.includes(transportModeRaw as TransportMode)) 
+        else if (!validTransportModes.includes(transportModeRaw as TransportMode))
           rowErrors.push(`交通方式"${transportModeRaw}"无效，应为: subway/bus/car/bike/walk`);
         if (isNaN(duration) || duration <= 0) rowErrors.push(`耗时"${r.duration}"无效`);
         if (isNaN(cost) || cost < 0) rowErrors.push(`费用"${r.cost}"无效`);
-        if (isNaN(crowdLevel) || crowdLevel < 1 || crowdLevel > 5 || !Number.isInteger(crowdLevel)) 
+        if (isNaN(crowdLevel) || crowdLevel < 1 || crowdLevel > 5 || !Number.isInteger(crowdLevel))
           rowErrors.push(`拥挤程度"${r.crowdLevel}"无效，应为1-5整数`);
         if (!date) rowErrors.push('日期为空');
         else if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) rowErrors.push(`日期"${date}"格式无效，应为YYYY-MM-DD`);
-        if (!validTimeOfDays.includes(timeOfDayRaw as TimeOfDay)) 
+        if (!validTimeOfDays.includes(timeOfDayRaw as TimeOfDay))
           rowErrors.push(`时间段"${timeOfDayRaw}"无效，应为: morning_peak/evening_peak/off_peak/unknown`);
 
         const originLoc = getLocationByName(origin);
@@ -173,6 +182,7 @@ export function AddRouteModal({
 
       importRoutes(validRoutes);
       calculateStatistics();
+      detectAnomalies();
       handleClose();
     } catch {
       alert('导入失败，请检查JSON格式');
@@ -183,6 +193,14 @@ export function AddRouteModal({
     const result = parseCSV(csvText, locationLookup);
     setCsvResult(result);
     setCsvStep('preview');
+    setSelectedValidIds(new Set(result.validRoutes.map(r => r.id)));
+    const coords: Record<string, { lat: string; lng: string }> = {};
+    result.unknownLocations.forEach(name => {
+      coords[name] = { lat: '', lng: '' };
+    });
+    setUnknownLocationCoords(coords);
+    setSkippedUnknownLocations(new Set());
+    setShowErrorDetails(false);
   };
 
   const handleCSVFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -197,16 +215,130 @@ export function AddRouteModal({
     e.target.value = '';
   };
 
-  const handleCSVConfirmImport = () => {
-    if (!csvResult || csvResult.validRoutes.length === 0) return;
-    importRoutes(csvResult.validRoutes);
-    calculateStatistics();
-    handleClose();
-  };
-
   const handleCSVBack = () => {
     setCsvStep('input');
     setCsvResult(null);
+    setSelectedValidIds(new Set());
+    setUnknownLocationCoords({});
+    setSkippedUnknownLocations(new Set());
+  };
+
+  const toggleSelectAllValid = () => {
+    if (!csvResult) return;
+    if (selectedValidIds.size === csvResult.validRoutes.length) {
+      setSelectedValidIds(new Set());
+    } else {
+      setSelectedValidIds(new Set(csvResult.validRoutes.map(r => r.id)));
+    }
+  };
+
+  const toggleValidRoute = (id: string) => {
+    setSelectedValidIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSkipLocation = (name: string) => {
+    setSkippedUnknownLocations(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  };
+
+  const updateUnknownCoord = (name: string, field: 'lat' | 'lng', value: string) => {
+    setUnknownLocationCoords(prev => ({
+      ...prev,
+      [name]: { ...prev[name], [field]: value }
+    }));
+  };
+
+  const isLocationResolved = (name: string): boolean => {
+    if (skippedUnknownLocations.has(name)) return false;
+    const c = unknownLocationCoords[name];
+    if (!c) return false;
+    const lat = Number(c.lat);
+    const lng = Number(c.lng);
+    return c.lat !== '' && c.lng !== '' && !isNaN(lat) && !isNaN(lng);
+  };
+
+  const isLocationSkipped = (name: string): boolean => {
+    return skippedUnknownLocations.has(name);
+  };
+
+  const getUnknownRowStatus = (row: { unknownOrigins: string[]; unknownDestinations: string[] }): 'resolved' | 'skipped' | 'pending' => {
+    const allNames = [...row.unknownOrigins, ...row.unknownDestinations];
+    if (allNames.some(n => isLocationSkipped(n))) return 'skipped';
+    if (allNames.every(n => isLocationResolved(n))) return 'resolved';
+    return 'pending';
+  };
+
+  const getResolvedLocationNames = (): Set<string> => {
+    const resolved = new Set<string>();
+    csvResult?.unknownLocations.forEach(name => {
+      if (isLocationResolved(name)) resolved.add(name);
+    });
+    return resolved;
+  };
+
+  const handleCSVConfirmImport = () => {
+    if (!csvResult) return;
+
+    const routesToImport: CommuteRoute[] = [];
+
+    csvResult.validRoutes.forEach(route => {
+      if (selectedValidIds.has(route.id)) {
+        routesToImport.push(route);
+      }
+    });
+
+    const resolvedLocations = getResolvedLocationNames();
+
+    const newLocations: { name: string; lat: number; lng: number }[] = [];
+    resolvedLocations.forEach(name => {
+      const c = unknownLocationCoords[name];
+      if (c) {
+        newLocations.push({ name, lat: Number(c.lat), lng: Number(c.lng) });
+      }
+    });
+
+    newLocations.forEach(loc => {
+      addLocation(loc);
+    });
+
+    csvResult.unknownLocationRows.forEach(row => {
+      const status = getUnknownRowStatus(row);
+      if (status === 'resolved') {
+        routesToImport.push(row.route);
+      }
+    });
+
+    if (routesToImport.length === 0) return;
+
+    importRoutes(routesToImport);
+    calculateStatistics();
+    detectAnomalies();
+    handleClose();
+  };
+
+  const getImportCount = (): number => {
+    if (!csvResult) return 0;
+    let count = 0;
+    count += selectedValidIds.size;
+    csvResult.unknownLocationRows.forEach(row => {
+      if (getUnknownRowStatus(row) === 'resolved') count++;
+    });
+    return count;
   };
 
   if (!isOpen) return null;
@@ -214,9 +346,11 @@ export function AddRouteModal({
   const csvSampleHeader = Object.values(CSV_FIELD_LABELS).join(',');
   const csvSampleRow = '中关村,国贸,subway,45,5,4,2024-01-15,morning_peak';
 
+  const allValidSelected = csvResult ? selectedValidIds.size === csvResult.validRoutes.length && csvResult.validRoutes.length > 0 : false;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
+      <div className={`bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-auto ${csvStep === 'preview' ? 'max-w-2xl' : 'max-w-lg'}`}>
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -522,11 +656,14 @@ export function AddRouteModal({
                     <p className="text-xs text-blue-600 mb-1">
                       地点名称需匹配：{locationOptions.map((l) => l.name).join('、')}
                     </p>
+                    <p className="text-xs text-blue-500">
+                      不在列表中的地点可在预览后补坐标或跳过
+                    </p>
                     {onOpenLocationManager && (
                       <button
                         type="button"
                         onClick={onOpenLocationManager}
-                        className="text-xs text-blue-700 hover:text-blue-900 underline font-medium"
+                        className="text-xs text-blue-700 hover:text-blue-900 underline font-medium mt-1"
                       >
                         管理地点列表 →
                       </button>
@@ -544,14 +681,23 @@ export function AddRouteModal({
               ) : (
                 <>
                   {csvResult && (
-                    <>
-                      <div className="space-y-2">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-2">
                         <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
                           <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                           <span className="text-sm text-green-800">
-                            有效路线：<strong>{csvResult.validRoutes.length}</strong> 条
+                            有效：<strong>{csvResult.validRoutes.length}</strong> 条
                           </span>
                         </div>
+
+                        {csvResult.unknownLocations.length > 0 && (
+                          <div className="flex items-center gap-2 p-2 bg-orange-50 rounded-lg">
+                            <MapPin className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                            <span className="text-sm text-orange-800">
+                              未知地点：<strong>{csvResult.unknownLocations.length}</strong> 个
+                            </span>
+                          </div>
+                        )}
 
                         {csvResult.errors.length > 0 && (
                           <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
@@ -566,7 +712,7 @@ export function AddRouteModal({
                           <div className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg">
                             <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                             <div className="text-sm text-amber-800">
-                              <span className="font-medium">缺失字段：</span>
+                              <span className="font-medium">缺失：</span>
                               {csvResult.missingFields.map((f) => CSV_FIELD_LABELS[f as keyof typeof CSV_FIELD_LABELS] || f).join('、')}
                             </div>
                           </div>
@@ -575,23 +721,42 @@ export function AddRouteModal({
 
                       {csvResult.validRoutes.length > 0 && (
                         <div>
-                          <h3 className="text-sm font-medium text-gray-700 mb-2">路线预览</h3>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-700">有效记录</h3>
+                            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={allValidSelected}
+                                onChange={toggleSelectAllValid}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              全选导入
+                            </label>
+                          </div>
                           <div className="border border-gray-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
                             <table className="w-full text-xs">
                               <thead className="bg-gray-50 sticky top-0">
                                 <tr>
+                                  <th className="px-2 py-1.5 text-gray-600 font-medium w-8"></th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">路线</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">方式</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">耗时</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">费用</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">拥挤</th>
-                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium">时段</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">日期</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {csvResult.validRoutes.map((route) => (
-                                  <tr key={route.id} className="border-t border-gray-100 hover:bg-gray-50">
+                                  <tr key={route.id} className={`border-t border-gray-100 ${selectedValidIds.has(route.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                                    <td className="px-2 py-1.5 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedValidIds.has(route.id)}
+                                        onChange={() => toggleValidRoute(route.id)}
+                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                    </td>
                                     <td className="px-2 py-1.5 text-gray-800">
                                       {route.origin} → {route.destination}
                                     </td>
@@ -606,44 +771,181 @@ export function AddRouteModal({
                                     <td className="px-2 py-1.5 text-gray-700">{route.duration}分</td>
                                     <td className="px-2 py-1.5 text-gray-700">¥{route.cost}</td>
                                     <td className="px-2 py-1.5 text-gray-700">{route.crowdLevel}</td>
-                                    <td className="px-2 py-1.5">
-                                      <span
-                                        className="inline-block px-1.5 py-0.5 rounded text-white text-[10px] font-medium"
-                                        style={{ backgroundColor: timeOfDayColors[route.timeOfDay || 'unknown'] }}
-                                      >
-                                        {timeOfDayLabels[route.timeOfDay || 'unknown']}
-                                      </span>
-                                    </td>
                                     <td className="px-2 py-1.5 text-gray-600">{route.date}</td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
                           </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            已选 {selectedValidIds.size} / {csvResult.validRoutes.length} 条
+                          </p>
+                        </div>
+                      )}
+
+                      {csvResult.unknownLocations.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <MapPin className="w-4 h-4 text-orange-600" />
+                            <h3 className="text-sm font-medium text-gray-700">未知地点处理</h3>
+                          </div>
+                          <div className="space-y-2">
+                            {csvResult.unknownLocations.map((name) => {
+                              const resolved = isLocationResolved(name);
+                              const skipped = isLocationSkipped(name);
+                              return (
+                                <div
+                                  key={name}
+                                  className={`flex items-center gap-2 p-2 rounded-lg border ${
+                                    skipped
+                                      ? 'bg-gray-50 border-gray-200 opacity-60'
+                                      : resolved
+                                      ? 'bg-green-50 border-green-200'
+                                      : 'bg-orange-50 border-orange-200'
+                                  }`}
+                                >
+                                  <span className="text-sm font-medium text-gray-800 min-w-[5rem]">{name}</span>
+                                  <div className="flex items-center gap-1.5 flex-1">
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      placeholder="纬度"
+                                      value={unknownLocationCoords[name]?.lat ?? ''}
+                                      onChange={(e) => updateUnknownCoord(name, 'lat', e.target.value)}
+                                      disabled={skipped}
+                                      className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                                    />
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      placeholder="经度"
+                                      value={unknownLocationCoords[name]?.lng ?? ''}
+                                      onChange={(e) => updateUnknownCoord(name, 'lng', e.target.value)}
+                                      disabled={skipped}
+                                      className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                                    />
+                                    {resolved && (
+                                      <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => toggleSkipLocation(name)}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                      skipped
+                                        ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                  >
+                                    {skipped ? (
+                                      <>
+                                        <Eye className="w-3 h-3" />
+                                        恢复
+                                      </>
+                                    ) : (
+                                      <>
+                                        <EyeOff className="w-3 h-3" />
+                                        跳过
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {csvResult.unknownLocationRows.length > 0 && (
+                            <div className="mt-3">
+                              <h4 className="text-xs font-medium text-gray-600 mb-1.5">
+                                含未知地点的记录（{csvResult.unknownLocationRows.length} 条）
+                              </h4>
+                              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                                <table className="w-full text-xs">
+                                  <thead className="bg-gray-50 sticky top-0">
+                                    <tr>
+                                      <th className="text-left px-2 py-1.5 text-gray-600 font-medium">路线</th>
+                                      <th className="text-left px-2 py-1.5 text-gray-600 font-medium">未知地点</th>
+                                      <th className="text-left px-2 py-1.5 text-gray-600 font-medium">状态</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {csvResult.unknownLocationRows.map((row) => {
+                                      const status = getUnknownRowStatus(row);
+                                      const allUnknown = [...row.unknownOrigins, ...row.unknownDestinations];
+                                      return (
+                                        <tr key={row.route.id} className={`border-t border-gray-100 ${
+                                          status === 'resolved' ? 'bg-green-50' :
+                                          status === 'skipped' ? 'bg-gray-50 opacity-60' :
+                                          'bg-orange-50'
+                                        }`}>
+                                          <td className="px-2 py-1.5 text-gray-800">
+                                            {row.route.origin} → {row.route.destination}
+                                          </td>
+                                          <td className="px-2 py-1.5 text-gray-600">
+                                            {allUnknown.join('、')}
+                                          </td>
+                                          <td className="px-2 py-1.5">
+                                            {status === 'resolved' && (
+                                              <span className="inline-flex items-center gap-1 text-green-700 font-medium">
+                                                <CheckCircle className="w-3 h-3" />
+                                                已补坐标
+                                              </span>
+                                            )}
+                                            {status === 'skipped' && (
+                                              <span className="inline-flex items-center gap-1 text-gray-500 font-medium">
+                                                <EyeOff className="w-3 h-3" />
+                                                已跳过
+                                              </span>
+                                            )}
+                                            {status === 'pending' && (
+                                              <span className="inline-flex items-center gap-1 text-orange-600 font-medium">
+                                                <AlertTriangle className="w-3 h-3" />
+                                                待处理
+                                              </span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
                       {csvResult.errors.length > 0 && (
                         <div>
-                          <h3 className="text-sm font-medium text-red-700 mb-2">错误详情</h3>
-                          <div className="border border-red-200 rounded-lg overflow-hidden max-h-32 overflow-y-auto">
-                            <table className="w-full text-xs">
-                              <thead className="bg-red-50 sticky top-0">
-                                <tr>
-                                  <th className="text-left px-2 py-1.5 text-red-600 font-medium">行号</th>
-                                  <th className="text-left px-2 py-1.5 text-red-600 font-medium">错误信息</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {csvResult.errors.map((err, idx) => (
-                                  <tr key={idx} className="border-t border-red-100">
-                                    <td className="px-2 py-1.5 text-red-700 font-mono">第{err.row}行</td>
-                                    <td className="px-2 py-1.5 text-red-600">{err.message}</td>
+                          <button
+                            onClick={() => setShowErrorDetails(!showErrorDetails)}
+                            className="flex items-center gap-1.5 text-sm font-medium text-red-700 mb-2 hover:text-red-900 transition-colors"
+                          >
+                            <AlertTriangle className="w-4 h-4" />
+                            错误详情（{csvResult.errors.length} 行）
+                            <span className="text-xs text-gray-400 ml-1">
+                              {showErrorDetails ? '收起' : '展开'}
+                            </span>
+                          </button>
+                          {showErrorDetails && (
+                            <div className="border border-red-200 rounded-lg overflow-hidden max-h-32 overflow-y-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-red-50 sticky top-0">
+                                  <tr>
+                                    <th className="text-left px-2 py-1.5 text-red-600 font-medium">行号</th>
+                                    <th className="text-left px-2 py-1.5 text-red-600 font-medium">错误信息</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                                </thead>
+                                <tbody>
+                                  {csvResult.errors.map((err, idx) => (
+                                    <tr key={idx} className="border-t border-red-100">
+                                      <td className="px-2 py-1.5 text-red-700 font-mono">第{err.row}行</td>
+                                      <td className="px-2 py-1.5 text-red-600">{err.message}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -656,13 +958,13 @@ export function AddRouteModal({
                         </button>
                         <button
                           onClick={handleCSVConfirmImport}
-                          disabled={csvResult.validRoutes.length === 0}
+                          disabled={getImportCount() === 0}
                           className="flex-1 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                         >
-                          确认导入 ({csvResult.validRoutes.length} 条)
+                          确认导入 ({getImportCount()} 条)
                         </button>
                       </div>
-                    </>
+                    </div>
                   )}
                 </>
               )}

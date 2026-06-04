@@ -43,10 +43,19 @@ export interface CSVRowError {
   message: string;
 }
 
+export interface CSVUnknownLocationRow {
+  route: CommuteRoute;
+  row: number;
+  unknownOrigins: string[];
+  unknownDestinations: string[];
+}
+
 export interface CSVParseResult {
   validRoutes: CommuteRoute[];
   errors: CSVRowError[];
   missingFields: string[];
+  unknownLocationRows: CSVUnknownLocationRow[];
+  unknownLocations: string[];
   totalRows: number;
 }
 
@@ -114,7 +123,7 @@ function parseCSVLine(line: string): string[] {
 export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVParseResult {
   const lines = csvText.trim().split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) {
-    return { validRoutes: [], errors: [{ row: 0, message: 'CSV数据不足，至少需要表头行和一行数据' }], missingFields: [], totalRows: 0 };
+    return { validRoutes: [], errors: [{ row: 0, message: 'CSV数据不足，至少需要表头行和一行数据' }], missingFields: [], unknownLocationRows: [], unknownLocations: [], totalRows: 0 };
   }
 
   const headerRow = parseCSVLine(lines[0]);
@@ -140,6 +149,7 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
 
   const validRoutes: CommuteRoute[] = [];
   const errors: CSVRowError[] = [];
+  const unknownLocationRows: CSVUnknownLocationRow[] = [];
   let totalRows = 0;
 
   for (let i = 1; i < lines.length; i++) {
@@ -192,11 +202,29 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
     const originCoords = locationLookup[origin];
     const destCoords = locationLookup[destination];
 
-    if (!originCoords) rowErrors.push(`出发地"${origin}"不在地点列表中`);
-    if (!destCoords) rowErrors.push(`目的地"${destination}"不在地点列表中`);
+    const unknownOrigins: string[] = [];
+    const unknownDestinations: string[] = [];
+    if (!originCoords) unknownOrigins.push(origin);
+    if (!destCoords) unknownDestinations.push(destination);
 
-    if (rowErrors.length > 0) {
-      errors.push({ row: i + 1, message: rowErrors.join('；') });
+    if (unknownOrigins.length > 0 || unknownDestinations.length > 0) {
+      unknownLocationRows.push({
+        route: {
+          id: `csv-${Date.now()}-${i}`,
+          name: `${origin} → ${destination}`,
+          origin,
+          destination,
+          transportMode: transportMode as TransportMode,
+          duration: Number(durationStr),
+          cost: Number(costStr),
+          crowdLevel: Number(crowdLevelStr),
+          date,
+          timeOfDay,
+        },
+        row: i + 1,
+        unknownOrigins,
+        unknownDestinations,
+      });
       continue;
     }
 
@@ -214,5 +242,11 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
     });
   }
 
-  return { validRoutes, errors, missingFields, totalRows };
+  const unknownLocationsSet = new Set<string>();
+  unknownLocationRows.forEach((r) => {
+    r.unknownOrigins.forEach((n) => unknownLocationsSet.add(n));
+    r.unknownDestinations.forEach((n) => unknownLocationsSet.add(n));
+  });
+
+  return { validRoutes, errors, missingFields, unknownLocationRows, unknownLocations: Array.from(unknownLocationsSet), totalRows };
 }
