@@ -112,12 +112,13 @@ function DimensionCard({ explanation, scoringWeights }: { explanation: Dimension
 }
 
 export function ScoreExplanationPanel() {
-  const { selectedScoreKey, setSelectedScoreKey, getScoreExplanation, scoringWeights } = useCommuteStore();
+  const { selectedScoreKey, setSelectedScoreKey, getScoreExplanation, scoringWeights, routeScores } = useCommuteStore();
 
   const explanation = useMemo(() => {
     if (!selectedScoreKey) return null;
     return getScoreExplanation(selectedScoreKey);
-  }, [selectedScoreKey, getScoreExplanation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- routeScores 用于触发权重变化后的重新计算
+  }, [selectedScoreKey, getScoreExplanation, routeScores]);
 
   if (!selectedScoreKey || !explanation) return null;
 
