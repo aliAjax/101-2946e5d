@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
 import { detectAllAnomalies, getAnomalyIgnoreKey } from '../lib/anomalyDetector';
 
@@ -18,6 +18,15 @@ type SaveInput = PersistedData & { selectedDate?: string | null };
 
 const VALID_TRANSPORT_MODES: string[] = ['subway', 'bus', 'car', 'bike', 'walk'];
 const VALID_TIME_OF_DAY: string[] = ['morning_peak', 'evening_peak', 'off_peak', 'unknown'];
+const ANOMALY_TYPES: AnomalyType[] = [
+  'negative_cost',
+  'invalid_crowd_level',
+  'same_origin_destination',
+  'date_out_of_range',
+  'duration_outlier',
+  'invalid_transport_mode',
+  'invalid_duration',
+];
 
 function sanitizeRoute(route: CommuteRoute): CommuteRoute {
   return {
@@ -25,6 +34,20 @@ function sanitizeRoute(route: CommuteRoute): CommuteRoute {
     transportMode: VALID_TRANSPORT_MODES.includes(route.transportMode) ? route.transportMode : 'subway',
     timeOfDay: VALID_TIME_OF_DAY.includes(route.timeOfDay) ? route.timeOfDay : 'unknown',
   };
+}
+
+function migrateLegacyAnomalyId(id: string): string {
+  const normalizedId = id.startsWith('anomaly-') ? id.slice('anomaly-'.length) : id;
+  const matchedType = ANOMALY_TYPES.find(type => {
+    const stableSuffix = `-${type}`;
+    return normalizedId.endsWith(stableSuffix) || new RegExp(`${stableSuffix}-\\d+$`).test(normalizedId);
+  });
+
+  if (!matchedType) return normalizedId;
+
+  const typeMarker = `-${matchedType}`;
+  const typeStart = normalizedId.lastIndexOf(typeMarker);
+  return `${normalizedId.slice(0, typeStart)}-${matchedType}`;
 }
 
 function loadFromStorage(): PersistedData | null {
@@ -42,24 +65,18 @@ function loadFromStorage(): PersistedData | null {
       if (!data.locations || data.locations.length === 0) {
         data.locations = defaultLocations;
       }
-      
+
       if (!data.ignoredAnomalyKeys) {
         data.ignoredAnomalyKeys = [];
       }
-      
+
       const legacyData = data as PersistedData & { ignoredAnomalyIds?: string[] };
       if (legacyData.ignoredAnomalyIds && legacyData.ignoredAnomalyIds.length > 0) {
-        const migratedKeys = legacyData.ignoredAnomalyIds.map(id => {
-          const match = id.match(/^anomaly-(.+)-([^-]+)(?:-\d+)?$/);
-          if (match) {
-            return `${match[1]}-${match[2]}`;
-          }
-          return id;
-        });
+        const migratedKeys = legacyData.ignoredAnomalyIds.map(migrateLegacyAnomalyId);
         data.ignoredAnomalyKeys = [...new Set([...data.ignoredAnomalyKeys, ...migratedKeys])];
         delete legacyData.ignoredAnomalyIds;
       }
-      
+
       return data;
     }
   } catch (e) {
@@ -242,7 +259,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
       if (oldName && newName && oldName !== newName) {
         newRoutes = state.routes.map((route) => {
-          let updated = { ...route };
+          const updated = { ...route };
           if (route.origin === oldName) {
             updated.origin = newName;
             updated.name = `${newName} → ${route.destination}`;
@@ -259,7 +276,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         });
 
         newFavorites = state.favorites.map((fav) => {
-          let updated = { ...fav };
+          const updated = { ...fav };
           if (fav.origin === oldName) {
             updated.origin = newName;
             updated.name = `${newName} → ${fav.destination}`;
@@ -562,7 +579,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   ignoreAnomaly: (anomalyId) => {
     const anomaly = get().anomalies.find(a => a.id === anomalyId);
     if (!anomaly) return;
-    
+
     const ignoreKey = getAnomalyIgnoreKey(anomaly.routeId, anomaly.type);
     set((state) => ({
       ignoredAnomalyKeys: [...state.ignoredAnomalyKeys, ignoreKey],
@@ -581,7 +598,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   unignoreAnomaly: (anomalyId) => {
     const anomaly = get().anomalies.find(a => a.id === anomalyId);
     if (!anomaly) return;
-    
+
     const ignoreKey = getAnomalyIgnoreKey(anomaly.routeId, anomaly.type);
     set((state) => ({
       ignoredAnomalyKeys: state.ignoredAnomalyKeys.filter(key => key !== ignoreKey),
@@ -635,15 +652,11 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     const route = get().routes.find(r => r.id === routeId);
     if (route) {
       const currentFilters = get().filters;
-      let newDateRange = { ...currentFilters.dateRange };
-      
-      if (route.date < currentFilters.dateRange.start) {
-        newDateRange.start = route.date;
-      }
-      if (route.date > currentFilters.dateRange.end) {
-        newDateRange.end = route.date;
-      }
-      
+      const newDateRange = {
+        start: route.date < currentFilters.dateRange.start ? route.date : currentFilters.dateRange.start,
+        end: route.date > currentFilters.dateRange.end ? route.date : currentFilters.dateRange.end,
+      };
+
       set({
         selectedRouteId: routeId,
         selectedDate: route.date,

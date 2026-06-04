@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useCommuteStore } from '../store/commuteStore';
 import { 
   transportModeColors, 
@@ -10,6 +10,21 @@ import {
   timeOfDayLabels 
 } from '../types/commute';
 import { BarChart3, Clock, DollarSign, Users } from 'lucide-react';
+
+interface PeakTooltipPayload {
+  payload: {
+    name: string;
+    avgDuration: number;
+    avgCost: number;
+    avgCrowd: number;
+    count: number;
+  };
+}
+
+interface PeakTooltipProps {
+  active?: boolean;
+  payload?: PeakTooltipPayload[];
+}
 
 export function PeakHourComparison() {
   const { getFilteredRoutes, selectedRouteId } = useCommuteStore();
@@ -97,7 +112,7 @@ export function PeakHourComparison() {
     return mode === selectedMode;
   };
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload }: PeakTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (

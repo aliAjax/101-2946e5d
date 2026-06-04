@@ -50,8 +50,6 @@ export interface CSVParseResult {
   totalRows: number;
 }
 
-const VALID_TRANSPORT_MODES: TransportMode[] = ['subway', 'bus', 'car', 'bike', 'walk'];
-
 const TRANSPORT_MODE_ALIASES: Record<string, TransportMode> = {
   subway: 'subway',
   bus: 'bus',
