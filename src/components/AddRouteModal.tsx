@@ -189,8 +189,8 @@ export function AddRouteModal({
     }
   };
 
-  const handleCSVParse = () => {
-    const result = parseCSV(csvText, locationLookup);
+  const showCSVPreview = (text: string) => {
+    const result = parseCSV(text, locationLookup);
     setCsvResult(result);
     setCsvStep('preview');
     setSelectedValidIds(new Set(result.validRoutes.map(r => r.id)));
@@ -203,6 +203,10 @@ export function AddRouteModal({
     setShowErrorDetails(false);
   };
 
+  const handleCSVParse = () => {
+    showCSVPreview(csvText);
+  };
+
   const handleCSVFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -210,6 +214,7 @@ export function AddRouteModal({
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
       setCsvText(text);
+      showCSVPreview(text);
     };
     reader.readAsText(file);
     e.target.value = '';
