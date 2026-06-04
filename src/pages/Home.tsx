@@ -15,6 +15,7 @@ import { RouteList } from '../components/RouteList';
 import { CommuteCalendar } from '../components/CommuteCalendar';
 import { FavoritesPanel } from '../components/FavoritesPanel';
 import { RouteScoringPanel } from '../components/RouteScoringPanel';
+import { ScoreExplanationPanel } from '../components/ScoreExplanationPanel';
 import { AnomalyDetectionPanel, AnomalyNotificationBadge, AnomalySlidePanel } from '../components/AnomalyDetectionPanel';
 import { Map, Plus, Settings, Navigation } from 'lucide-react';
 
@@ -102,6 +103,7 @@ export default function Home() {
 
           <div className="col-span-3 space-y-6">
             <RouteScoringPanel />
+            <ScoreExplanationPanel />
             <RouteDetailsPanel />
           </div>
         </div>

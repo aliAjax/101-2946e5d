@@ -74,6 +74,37 @@ export interface RouteScore {
   comfortScore: number;
 }
 
+export interface DimensionComparison {
+  transportMode: TransportMode;
+  label: string;
+  score: number;
+  rawValue: number;
+  diff: number;
+}
+
+export interface DimensionExplanation {
+  dimension: 'time' | 'cost' | 'comfort' | 'stability';
+  score: number;
+  formula: string;
+  rawValue: number;
+  rawUnit: string;
+  comparisons: DimensionComparison[];
+  sampleCount: number;
+  sampleWarning: string | null;
+}
+
+export interface ScoreExplanation {
+  scoreKey: string;
+  name: string;
+  origin: string;
+  destination: string;
+  transportMode: TransportMode;
+  totalScore: number;
+  dimensions: DimensionExplanation[];
+  sameODScores: RouteScore[];
+  sampleWarning: string | null;
+}
+
 export const transportModeLabels: Record<TransportMode, string> = {
   subway: '地铁',
   bus: '公交',

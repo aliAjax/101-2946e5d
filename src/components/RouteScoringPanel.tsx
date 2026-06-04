@@ -58,13 +58,18 @@ function WeightSlider({
   );
 }
 
-function RouteScoreCard({ score, rank, isFirst }: { score: RouteScore; rank: number; isFirst: boolean }) {
+function RouteScoreCard({ score, rank, isFirst, isSelected, onSelect }: { score: RouteScore; rank: number; isFirst: boolean; isSelected: boolean; onSelect: () => void }) {
   return (
-    <div className={`p-4 rounded-xl border-2 transition-all ${
-      isFirst 
-        ? 'border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 shadow-md' 
-        : 'border-gray-100 bg-white hover:border-gray-200'
-    }`}>
+    <div
+      onClick={onSelect}
+      className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${
+        isSelected
+          ? 'border-blue-400 bg-blue-50 shadow-md'
+          : isFirst
+          ? 'border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 shadow-md hover:border-amber-400'
+          : 'border-gray-100 bg-white hover:border-gray-200'
+      }`}
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
@@ -118,7 +123,9 @@ export function RouteScoringPanel() {
     scoringWeights, 
     routeScores, 
     setScoringWeights, 
-    calculateRouteScores 
+    calculateRouteScores,
+    selectedScoreKey,
+    setSelectedScoreKey,
   } = useCommuteStore();
   
   const filters = useCommuteStore((s) => s.filters);
@@ -233,6 +240,8 @@ export function RouteScoringPanel() {
                 score={score}
                 rank={index + 1}
                 isFirst={index === 0}
+                isSelected={selectedScoreKey === score.key}
+                onSelect={() => setSelectedScoreKey(selectedScoreKey === score.key ? null : score.key)}
               />
             ))}
           </div>
@@ -241,6 +250,12 @@ export function RouteScoringPanel() {
         {hasScores && routeScores.length > 5 && (
           <p className="text-xs text-gray-400 text-center mt-3">
             仅显示前 5 个最佳方案
+          </p>
+        )}
+
+        {hasScores && !selectedScoreKey && (
+          <p className="text-xs text-gray-400 text-center mt-3">
+            点击方案卡片查看评分解释
           </p>
         )}
       </div>
