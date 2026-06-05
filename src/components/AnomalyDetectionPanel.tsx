@@ -47,7 +47,6 @@ export function AnomalyDetectionPanel() {
   const [typeFilter, setTypeFilter] = useState<FilterType>('all');
   const [expandedAnomaly, setExpandedAnomaly] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     detectAnomalies();
@@ -101,6 +100,21 @@ export function AnomalyDetectionPanel() {
     }
   };
 
+  const handleSeverityCardClick = (severity: AnomalyRecord['severity']) => {
+    setSeverityFilter(prev => prev === severity ? 'all' : severity);
+  };
+
+  const handleTypeChipClick = (type: AnomalyType) => {
+    setTypeFilter(prev => prev === type ? 'all' : type);
+  };
+
+  const clearAllFilters = () => {
+    setSeverityFilter('all');
+    setTypeFilter('all');
+  };
+
+  const hasActiveFilters = severityFilter !== 'all' || typeFilter !== 'all';
+
   const anomalyTypes: AnomalyType[] = [
     'negative_cost',
     'invalid_crowd_level',
@@ -112,6 +126,8 @@ export function AnomalyDetectionPanel() {
   ];
 
   const severityLevels: AnomalyRecord['severity'][] = ['critical', 'high', 'medium', 'low'];
+
+  const activeTypes = anomalyTypes.filter(type => countByType[type] > 0);
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
@@ -134,26 +150,38 @@ export function AnomalyDetectionPanel() {
           >
             <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
           </button>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-2 rounded-lg transition-all ${
-              showFilters || severityFilter !== 'all' || typeFilter !== 'all'
-                ? 'text-blue-600 bg-blue-50'
-                : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
-            }`}
-            title="筛选"
-          >
-            <Filter className="w-4 h-4" />
-          </button>
+          {hasActiveFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="p-2 text-blue-600 bg-blue-50 rounded-lg transition-all hover:bg-blue-100"
+              title="清除所有筛选"
+            >
+              <Filter className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
       {anomalies.length > 0 && (
-        <div className="grid grid-cols-4 gap-2 mb-4">
+        <div className="grid grid-cols-4 gap-2 mb-3">
           {severityLevels.map(severity => (
-            <div
+            <button
               key={severity}
-              className="text-center p-2 rounded-lg bg-gray-50"
+              onClick={() => handleSeverityCardClick(severity)}
+              className={`text-center p-2 rounded-lg transition-all ${
+                severityFilter === severity
+                  ? 'shadow-sm outline outline-2 outline-offset-1'
+                  : 'hover:shadow-sm'
+              }`}
+              style={{
+                backgroundColor: severityFilter === severity
+                  ? anomalySeverityColors[severity] + '20'
+                  : '#F9FAFB',
+                outlineColor: severityFilter === severity
+                  ? anomalySeverityColors[severity]
+                  : 'transparent',
+              }}
+              title={`筛选：${anomalySeverityLabels[severity]}风险`}
             >
               <div 
                 className="text-lg font-bold"
@@ -164,71 +192,41 @@ export function AnomalyDetectionPanel() {
               <div className="text-xs text-gray-500">
                 {anomalySeverityLabels[severity]}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
 
-      {showFilters && (
-        <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-3">
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">按严重程度</label>
-            <div className="flex flex-wrap gap-1">
+      {anomalies.length > 0 && activeTypes.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs font-medium text-gray-500">按类型筛选</span>
+            {hasActiveFilters && (
               <button
-                onClick={() => setSeverityFilter('all')}
-                className={`text-xs px-2 py-1 rounded transition-all ${
-                  severityFilter === 'all'
-                    ? 'bg-gray-800 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
-                }`}
+                onClick={clearAllFilters}
+                className="text-xs text-blue-600 hover:underline"
               >
-                全部
+                清除筛选
               </button>
-              {severityLevels.map(severity => (
-                <button
-                  key={severity}
-                  onClick={() => setSeverityFilter(severity)}
-                  className={`text-xs px-2 py-1 rounded transition-all ${
-                    severityFilter === severity
-                      ? 'text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-100'
-                  }`}
-                  style={severityFilter === severity ? { backgroundColor: anomalySeverityColors[severity] } : {}}
-                >
-                  {anomalySeverityLabels[severity]}
-                </button>
-              ))}
-            </div>
+            )}
           </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">按异常类型</label>
-            <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
+            {activeTypes.map(type => (
               <button
-                onClick={() => setTypeFilter('all')}
-                className={`text-xs px-2 py-1 rounded transition-all ${
-                  typeFilter === 'all'
-                    ? 'bg-gray-800 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                key={type}
+                onClick={() => handleTypeChipClick(type)}
+                className={`text-xs px-2.5 py-1 rounded-full transition-all ${
+                  typeFilter === type
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                全部
+                {anomalyTypeLabels[type]}
+                <span className={`ml-1 ${typeFilter === type ? 'text-blue-200' : 'text-gray-400'}`}>
+                  {countByType[type]}
+                </span>
               </button>
-              {anomalyTypes.map(type => (
-                countByType[type] > 0 && (
-                  <button
-                    key={type}
-                    onClick={() => setTypeFilter(type)}
-                    className={`text-xs px-2 py-1 rounded transition-all ${
-                      typeFilter === type
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {anomalyTypeLabels[type]} ({countByType[type]})
-                  </button>
-                )
-              ))}
-            </div>
+            ))}
           </div>
         </div>
       )}
@@ -247,7 +245,7 @@ export function AnomalyDetectionPanel() {
                 <Filter className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm text-gray-500">当前筛选条件下无异常记录</p>
                 <button
-                  onClick={() => { setSeverityFilter('all'); setTypeFilter('all'); }}
+                  onClick={clearAllFilters}
                   className="text-xs text-blue-600 hover:underline mt-2"
                 >
                   清除筛选条件
@@ -414,7 +412,9 @@ export function AnomalyDetectionPanel() {
         <div className="mt-4 pt-4 border-t border-gray-100">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>
-              显示 {filteredAnomalies.length} / {anomalies.length} 条异常
+              {hasActiveFilters
+                ? `筛选显示 ${filteredAnomalies.length} / ${anomalies.length} 条异常`
+                : `共 ${anomalies.length} 条异常`}
             </span>
             <span>
               共 {routes.length} 条记录
