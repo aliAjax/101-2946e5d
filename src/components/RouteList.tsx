@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeColors, transportModeLabels } from '../types/commute';
-import { List, Clock, DollarSign, Users, MapPin, Star } from 'lucide-react';
+import { List, Clock, DollarSign, Users, MapPin, Star, X } from 'lucide-react';
 
 export function RouteList() {
   const { getFilteredRoutes, selectedRouteId, selectRoute, isFavorite, toggleFavorite } = useCommuteStore();
   const filteredRoutes = getFilteredRoutes();
+  const [noteRouteId, setNoteRouteId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
 
   const displayedRoutes = useMemo(() => {
     return filteredRoutes.slice(0, 50);
@@ -64,7 +66,12 @@ export function RouteList() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleFavorite(route);
+                      if (isFav) {
+                        toggleFavorite(route);
+                      } else {
+                        setNoteRouteId(route.id);
+                        setNoteText('');
+                      }
                     }}
                     className={`transition-colors ${
                       isFav ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400 opacity-0 group-hover:opacity-100'
@@ -100,6 +107,67 @@ export function RouteList() {
           );
         })}
       </div>
+
+      {noteRouteId && (() => {
+        const target = displayedRoutes.find(r => r.id === noteRouteId);
+        if (!target) { setNoteRouteId(null); return null; }
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setNoteRouteId(null)}>
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <div
+              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                  <h3 className="text-base font-semibold text-gray-800">收藏路线</h3>
+                </div>
+                <button
+                  onClick={() => setNoteRouteId(null)}
+                  className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+              <div className="mb-4">
+                <div className="text-sm text-gray-600 mb-2">
+                  {target.origin} → {target.destination}（{transportModeLabels[target.transportMode]}）
+                </div>
+                <label className="block text-xs text-gray-500 mb-1">添加备注（可选）</label>
+                <textarea
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  placeholder="例如：早高峰首选、雨天备选…"
+                  maxLength={100}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm resize-none"
+                  autoFocus
+                />
+                <div className="text-right text-xs text-gray-400 mt-1">{noteText.length}/100</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setNoteRouteId(null)}
+                  className="flex-1 py-2 text-sm bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    toggleFavorite(target, noteText);
+                    setNoteRouteId(null);
+                  }}
+                  className="flex-1 py-2 text-sm bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Star className="w-4 h-4" />
+                  收藏
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
