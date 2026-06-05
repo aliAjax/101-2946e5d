@@ -152,6 +152,7 @@ interface CommuteState {
   filterPresets: FilterPreset[];
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
+  updateRoute: (id: string, updates: Partial<Omit<CommuteRoute, 'id'>>) => void;
   deleteRoute: (id: string) => void;
   selectRoute: (id: string | null) => void;
   setFilters: (filters: Partial<FilterOptions>) => void;
@@ -241,6 +242,51 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       routes: [...state.routes, sanitizeRoute(route)],
     }));
     saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyKeys: get().ignoredAnomalyKeys });
+  },
+
+  updateRoute: (id, updates) => {
+    set((state) => {
+      const routeIndex = state.routes.findIndex(r => r.id === id);
+      if (routeIndex === -1) return state;
+      const oldRoute = state.routes[routeIndex];
+      const updatedRoute = sanitizeRoute({ ...oldRoute, ...updates });
+      const newRoutes = [...state.routes];
+      newRoutes[routeIndex] = updatedRoute;
+      let newFavorites = state.favorites;
+      const originChanged = updates.origin !== undefined && updates.origin !== oldRoute.origin;
+      const destChanged = updates.destination !== undefined && updates.destination !== oldRoute.destination;
+      const modeChanged = updates.transportMode !== undefined && updates.transportMode !== oldRoute.transportMode;
+      if (originChanged || destChanged) {
+        const newName = `${updates.origin ?? oldRoute.origin} → ${updates.destination ?? oldRoute.destination}`;
+        updatedRoute.name = newName;
+        newFavorites = state.favorites.map(fav => {
+          if (fav.origin === oldRoute.origin && fav.destination === oldRoute.destination && fav.transportMode === oldRoute.transportMode) {
+            return {
+              ...fav,
+              name: `${updates.origin ?? oldRoute.origin} → ${updates.destination ?? oldRoute.destination}`,
+              origin: updates.origin ?? oldRoute.origin,
+              destination: updates.destination ?? oldRoute.destination,
+              transportMode: updates.transportMode ?? oldRoute.transportMode,
+            };
+          }
+          return fav;
+        });
+      } else if (modeChanged) {
+        newFavorites = state.favorites.map(fav => {
+          if (fav.origin === oldRoute.origin && fav.destination === oldRoute.destination && fav.transportMode === oldRoute.transportMode) {
+            return { ...fav, transportMode: updates.transportMode! };
+          }
+          return fav;
+        });
+      }
+      const newAnomalies = state.anomalies.filter(a => a.routeId !== id);
+      const newIgnoredKeys = state.ignoredAnomalyKeys.filter(key => !key.startsWith(`${id}-`));
+      return { routes: newRoutes, favorites: newFavorites, anomalies: newAnomalies, ignoredAnomalyKeys: newIgnoredKeys };
+    });
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyKeys: get().ignoredAnomalyKeys });
+    get().calculateStatistics();
+    get().calculateRouteScores();
+    get().detectAnomalies();
   },
 
   deleteRoute: (id) => {
