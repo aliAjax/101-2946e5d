@@ -1,13 +1,14 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
-import { transportModeLabels, transportModeColors, timeOfDayLabels, anomalyTypeLabels, anomalySeverityLabels, CommuteRoute, RouteScore, AnomalyRecord, TransportMode } from '../types/commute';
-import { Download, FileJson, FileSpreadsheet, FileText, X, Eye, Clock, DollarSign, BarChart3, AlertTriangle } from 'lucide-react';
+import { transportModeLabels, transportModeColors, timeOfDayLabels, anomalyTypeLabels, anomalySeverityLabels, CommuteRoute, RouteScore, AnomalyRecord, TransportMode, FavoriteRoute } from '../types/commute';
+import { Download, FileJson, FileSpreadsheet, FileText, X, Eye, Clock, DollarSign, BarChart3, AlertTriangle, Star } from 'lucide-react';
 
 type ExportFormat = 'json' | 'csv' | 'summary';
 
 interface ExportOptions {
   includeScores: boolean;
   includeAnomalies: boolean;
+  includeFavorites: boolean;
 }
 
 function downloadFile(content: string, filename: string, mimeType: string) {
@@ -162,6 +163,49 @@ function generateAnomaliesSection(anomalies: AnomalyRecord[]): string {
   return lines.join('\n');
 }
 
+function favoritesToCSVSection(favorites: FavoriteRoute[]): string {
+  const lines: string[] = [
+    '',
+    '',
+    '=== 收藏路线 ===',
+    '',
+  ];
+  lines.push(['路线名称', '出发地', '目的地', '交通方式', '收藏时间', '备注'].map(escapeCSVField).join(','));
+  favorites.forEach(f => {
+    lines.push([
+      f.name,
+      f.origin,
+      f.destination,
+      transportModeLabels[f.transportMode],
+      f.createdAt,
+      f.note || '',
+    ].map(escapeCSVField).join(','));
+  });
+  return lines.join('\n');
+}
+
+function generateFavoritesSection(favorites: FavoriteRoute[]): string {
+  if (favorites.length === 0) return '';
+  const lines: string[] = [
+    '',
+    '',
+    '=== 收藏路线 ===',
+    '',
+    `共收藏 ${favorites.length} 条路线`,
+    '',
+  ];
+  favorites.forEach(f => {
+    lines.push(`${f.name}（${transportModeLabels[f.transportMode]}）`);
+    lines.push(`  出发地：${f.origin}  目的地：${f.destination}`);
+    lines.push(`  收藏时间：${new Date(f.createdAt).toLocaleString('zh-CN')}`);
+    if (f.note) {
+      lines.push(`  备注：${f.note}`);
+    }
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
 function TransportDistribution({ routes }: { routes: CommuteRoute[] }) {
   const distribution = useMemo(() => {
     const counts: Partial<Record<TransportMode, number>> = {};
@@ -203,6 +247,7 @@ function ExportPreviewModal({
   routes,
   routeScores,
   anomalies,
+  favorites,
   onConfirm,
   onCancel,
 }: {
@@ -210,11 +255,13 @@ function ExportPreviewModal({
   routes: CommuteRoute[];
   routeScores: RouteScore[];
   anomalies: AnomalyRecord[];
+  favorites: FavoriteRoute[];
   onConfirm: (options: ExportOptions) => void;
   onCancel: () => void;
 }) {
   const [includeScores, setIncludeScores] = useState(true);
   const [includeAnomalies, setIncludeAnomalies] = useState(true);
+  const [includeFavorites, setIncludeFavorites] = useState(true);
 
   const stats = useMemo(() => {
     const total = routes.length;
@@ -229,8 +276,8 @@ function ExportPreviewModal({
   const formatLabel = format === 'json' ? 'JSON' : format === 'csv' ? 'CSV' : '统计摘要';
 
   const handleConfirm = useCallback(() => {
-    onConfirm({ includeScores, includeAnomalies });
-  }, [onConfirm, includeScores, includeAnomalies]);
+    onConfirm({ includeScores, includeAnomalies, includeFavorites });
+  }, [onConfirm, includeScores, includeAnomalies, includeFavorites]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onCancel}>
@@ -338,6 +385,29 @@ function ExportPreviewModal({
                   </p>
                 </div>
               </label>
+              <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={includeFavorites}
+                  onChange={e => setIncludeFavorites(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Star className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-sm font-medium text-gray-700">包含收藏信息</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    导出收藏路线及其备注信息
+                    {favorites.length === 0 && (
+                      <span className="text-gray-400 ml-1">（暂无收藏）</span>
+                    )}
+                    {favorites.length > 0 && (
+                      <span className="text-amber-500 ml-1">（共{favorites.length}条收藏）</span>
+                    )}
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
         </div>
@@ -362,7 +432,7 @@ function ExportPreviewModal({
 }
 
 export function DataExportPanel() {
-  const { getFilteredRoutes, routeScores, anomalies } = useCommuteStore();
+  const { getFilteredRoutes, routeScores, anomalies, favorites } = useCommuteStore();
   const [previewFormat, setPreviewFormat] = useState<ExportFormat | null>(null);
 
   const filteredRoutes = getFilteredRoutes();
@@ -379,21 +449,24 @@ export function DataExportPanel() {
       const data: Record<string, unknown> = { routes: filteredRoutes };
       if (options.includeScores) data.scores = routeScores;
       if (options.includeAnomalies) data.anomalies = anomalies;
+      if (options.includeFavorites) data.favorites = favorites;
       const json = JSON.stringify(data, null, 2);
       downloadFile(json, `通勤数据_${timestamp}.json`, 'application/json;charset=utf-8');
     } else if (format === 'csv') {
       let csv = routesToCSV(filteredRoutes);
       if (options.includeScores) csv += scoresToCSVSection(routeScores);
       if (options.includeAnomalies) csv += anomaliesToCSVSection(anomalies);
+      if (options.includeFavorites) csv += favoritesToCSVSection(favorites);
       downloadFile('\uFEFF' + csv, `通勤数据_${timestamp}.csv`, 'text/csv;charset=utf-8');
     } else {
       let summary = generateSummary(filteredRoutes);
       if (options.includeScores) summary += generateScoresSection(routeScores);
       if (options.includeAnomalies) summary += generateAnomaliesSection(anomalies);
+      if (options.includeFavorites) summary += generateFavoritesSection(favorites);
       downloadFile(summary, `通勤摘要_${timestamp}.txt`, 'text/plain;charset=utf-8');
     }
     setPreviewFormat(null);
-  }, [filteredRoutes, routeScores, anomalies, timestamp]);
+  }, [filteredRoutes, routeScores, anomalies, favorites, timestamp]);
 
   const handleClosePreview = useCallback(() => {
     setPreviewFormat(null);
@@ -451,6 +524,7 @@ export function DataExportPanel() {
           routes={filteredRoutes}
           routeScores={routeScores}
           anomalies={anomalies}
+          favorites={favorites}
           onConfirm={(options) => handleConfirmExport(previewFormat, options)}
           onCancel={handleClosePreview}
         />

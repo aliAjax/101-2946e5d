@@ -51,6 +51,7 @@ export interface FavoriteRoute {
   destination: string;
   transportMode: TransportMode;
   createdAt: string;
+  note: string;
 }
 
 export interface CommuteStatistics {

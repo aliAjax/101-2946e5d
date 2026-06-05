@@ -10,6 +10,8 @@ export function RouteDetailsPanel() {
   const isCurrentFavorite = selectedRoute ? isFavorite(selectedRoute) : false;
 
   const [isEditing, setIsEditing] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [favoriteNote, setFavoriteNote] = useState('');
   const [editForm, setEditForm] = useState({
     origin: '',
     destination: '',
@@ -366,7 +368,14 @@ export function RouteDetailsPanel() {
             </div>
 
             <button
-              onClick={() => selectedRoute && toggleFavorite(selectedRoute)}
+              onClick={() => {
+                if (isCurrentFavorite) {
+                  toggleFavorite(selectedRoute);
+                } else {
+                  setFavoriteNote('');
+                  setShowNoteModal(true);
+                }
+              }}
               className={`w-full mt-4 py-2 text-sm rounded-lg transition-colors flex items-center justify-center gap-2 ${
                 isCurrentFavorite
                   ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
@@ -376,6 +385,54 @@ export function RouteDetailsPanel() {
               <Star className={`w-4 h-4 ${isCurrentFavorite ? 'fill-amber-500 text-amber-500' : ''}`} />
               {isCurrentFavorite ? '取消收藏' : '收藏此路线'}
             </button>
+
+            {showNoteModal && selectedRoute && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowNoteModal(false)}>
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+                <div
+                  className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                    <h3 className="text-base font-semibold text-gray-800">收藏路线</h3>
+                  </div>
+                  <div className="mb-4">
+                    <div className="text-sm text-gray-600 mb-2">
+                      {selectedRoute.origin} → {selectedRoute.destination}（{transportModeLabels[selectedRoute.transportMode]}）
+                    </div>
+                    <label className="block text-xs text-gray-500 mb-1">添加备注（可选）</label>
+                    <textarea
+                      value={favoriteNote}
+                      onChange={e => setFavoriteNote(e.target.value)}
+                      placeholder="例如：早高峰首选、雨天备选…"
+                      maxLength={100}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm resize-none"
+                    />
+                    <div className="text-right text-xs text-gray-400 mt-1">{favoriteNote.length}/100</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowNoteModal(false)}
+                      className="flex-1 py-2 text-sm bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => {
+                        toggleFavorite(selectedRoute, favoriteNote);
+                        setShowNoteModal(false);
+                      }}
+                      className="flex-1 py-2 text-sm bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-1"
+                    >
+                      <Star className="w-4 h-4" />
+                      收藏
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={startEditing}

@@ -91,6 +91,11 @@ function loadFromStorage(): PersistedData | null {
         data.ignoredAnomalyKeys = [];
       }
 
+      data.favorites = data.favorites.map(fav => ({
+        ...fav,
+        note: fav.note || '',
+      }));
+
       const legacyData = data as PersistedData & { ignoredAnomalyIds?: string[] };
       if (legacyData.ignoredAnomalyIds && legacyData.ignoredAnomalyIds.length > 0) {
         const migratedKeys = legacyData.ignoredAnomalyIds.map(migrateLegacyAnomalyId);
@@ -161,10 +166,11 @@ interface CommuteState {
   calculateStatistics: () => void;
   importRoutes: (routes: CommuteRoute[]) => void;
   resetToMockData: () => void;
-  addFavorite: (route: CommuteRoute) => void;
+  addFavorite: (route: CommuteRoute, note?: string) => void;
   removeFavorite: (id: string) => void;
   isFavorite: (route: CommuteRoute) => boolean;
-  toggleFavorite: (route: CommuteRoute) => void;
+  toggleFavorite: (route: CommuteRoute, note?: string) => void;
+  updateFavoriteNote: (id: string, note: string) => void;
   setScoringWeights: (weights: Partial<ScoringWeights>) => void;
   calculateRouteScores: () => void;
   addLocation: (location: Omit<Location, 'id'>) => void;
@@ -503,7 +509,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters, favorites: get().favorites, locations: defaultLocations, ignoredAnomalyKeys: [] });
   },
 
-  addFavorite: (route) => {
+  addFavorite: (route, note) => {
     const { favorites } = get();
     const exists = favorites.some(f => 
       f.origin === route.origin && 
@@ -518,6 +524,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       destination: route.destination,
       transportMode: route.transportMode,
       createdAt: new Date().toISOString(),
+      note: note || '',
     };
     set((state) => ({
       favorites: [...state.favorites, newFavorite],
@@ -541,7 +548,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     );
   },
 
-  toggleFavorite: (route) => {
+  toggleFavorite: (route, note) => {
     const { addFavorite, removeFavorite } = get();
     const existing = get().favorites.find(f => 
       f.origin === route.origin && 
@@ -551,8 +558,17 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     if (existing) {
       removeFavorite(existing.id);
     } else {
-      addFavorite(route);
+      addFavorite(route, note);
     }
+  },
+
+  updateFavoriteNote: (id, note) => {
+    set((state) => ({
+      favorites: state.favorites.map(f =>
+        f.id === id ? { ...f, note } : f
+      ),
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyKeys: get().ignoredAnomalyKeys });
   },
 
   setScoringWeights: (weights) => {
