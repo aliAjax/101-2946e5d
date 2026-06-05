@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeLabels, transportModeColors, TransportMode, TimeOfDay, timeOfDayLabels, timeOfDayColors } from '../types/commute';
-import { Filter, Calendar, Sun, Moon, RefreshCw, Star, Clock, Bookmark, BookmarkCheck, X, Save, Trash2 } from 'lucide-react';
+import { Filter, Calendar, Sun, Moon, RefreshCw, Star, Clock, Bookmark, BookmarkCheck, X, Save, Trash2, AlertCircle } from 'lucide-react';
 
 export function FilterPanel() {
-  const { filters, setFilters, calculateStatistics, filterPresets, saveFilterPreset, deleteFilterPreset, applyFilterPreset } = useCommuteStore();
+  const { filters, setFilters, calculateStatistics, filterPresets, saveFilterPreset, deleteFilterPreset, applyFilterPreset, monthFilterActive, setMonthFilter } = useCommuteStore();
   const [isSavingPreset, setIsSavingPreset] = useState(false);
   const [presetName, setPresetName] = useState('');
 
@@ -199,7 +199,24 @@ export function FilterPanel() {
           <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
             <Calendar className="w-4 h-4" />
             日期范围
+            {monthFilterActive && (
+              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                <AlertCircle className="w-3 h-3" />
+                按月筛选中
+              </span>
+            )}
           </div>
+          {monthFilterActive && (
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-xs text-green-600">日历月份筛选已激活，日期范围由日历控制</span>
+              <button
+                onClick={() => setMonthFilter(false)}
+                className="text-xs text-green-700 underline hover:text-green-900 transition-colors"
+              >
+                恢复原范围
+              </button>
+            </div>
+          )}
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-xs text-gray-500 mb-1 block">开始日期</label>

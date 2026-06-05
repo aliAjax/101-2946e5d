@@ -155,6 +155,8 @@ interface CommuteState {
   isAnomalyPanelOpen: boolean;
   selectedScoreKey: string | null;
   filterPresets: FilterPreset[];
+  monthFilterActive: boolean;
+  previousDateRange: { start: string; end: string } | null;
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
   updateRoute: (id: string, updates: Partial<Omit<CommuteRoute, 'id'>>) => void;
@@ -162,6 +164,7 @@ interface CommuteState {
   selectRoute: (id: string | null) => void;
   setFilters: (filters: Partial<FilterOptions>) => void;
   setSelectedDate: (date: string | null) => void;
+  setMonthFilter: (active: boolean, year?: number, month?: number) => void;
   getFilteredRoutes: () => CommuteRoute[];
   calculateStatistics: () => void;
   importRoutes: (routes: CommuteRoute[]) => void;
@@ -236,6 +239,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   isAnomalyPanelOpen: false,
   selectedScoreKey: null,
   filterPresets: loadPresetsFromStorage(),
+  monthFilterActive: false,
+  previousDateRange: null,
 
   setRoutes: (routes) => {
     const sanitizedRoutes = routes.map(sanitizeRoute);
@@ -317,6 +322,32 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   setSelectedDate: (date) => {
     set({ selectedDate: date });
+  },
+
+  setMonthFilter: (active, year, month) => {
+    if (active) {
+      if (year !== undefined && month !== undefined) {
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const start = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        const end = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+        const currentRange = get().filters.dateRange;
+        set((state) => ({
+          monthFilterActive: true,
+          previousDateRange: state.previousDateRange || { ...currentRange },
+          selectedDate: null,
+          filters: { ...state.filters, dateRange: { start, end } },
+        }));
+      }
+    } else {
+      const prev = get().previousDateRange;
+      set((state) => ({
+        monthFilterActive: false,
+        previousDateRange: null,
+        filters: { ...state.filters, dateRange: prev || state.filters.dateRange },
+      }));
+    }
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyKeys: get().ignoredAnomalyKeys });
+    setTimeout(() => get().calculateStatistics(), 0);
   },
 
   addLocation: (location) => {
@@ -505,6 +536,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       selectedRouteId: null,
       filters: defaultFilters,
       locations: defaultLocations,
+      monthFilterActive: false,
+      previousDateRange: null,
     });
     saveToStorage({ routes: mockRoutes, selectedRouteId: null, filters: defaultFilters, favorites: get().favorites, locations: defaultLocations, ignoredAnomalyKeys: [] });
   },

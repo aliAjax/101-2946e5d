@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
-import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, X, Filter } from 'lucide-react';
 
 interface DayStats {
   count: number;
@@ -23,7 +23,7 @@ function formatDate(year: number, month: number, day: number): string {
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
 export function CommuteCalendar() {
-  const { routes, selectedDate, setSelectedDate, calculateStatistics } = useCommuteStore();
+  const { routes, selectedDate, setSelectedDate, calculateStatistics, monthFilterActive, setMonthFilter } = useCommuteStore();
 
   const routesByDate = useMemo(() => {
     const map = new Map<string, DayStats>();
@@ -75,20 +75,34 @@ export function CommuteCalendar() {
   };
 
   const handlePrevMonth = () => {
+    let newYear = viewYear;
+    let newMonth: number;
     if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear(y => y - 1);
+      newMonth = 11;
+      newYear = viewYear - 1;
     } else {
-      setViewMonth(m => m - 1);
+      newMonth = viewMonth - 1;
+    }
+    setViewYear(newYear);
+    setViewMonth(newMonth);
+    if (monthFilterActive) {
+      setMonthFilter(true, newYear, newMonth);
     }
   };
 
   const handleNextMonth = () => {
+    let newYear = viewYear;
+    let newMonth: number;
     if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear(y => y + 1);
+      newMonth = 0;
+      newYear = viewYear + 1;
     } else {
-      setViewMonth(m => m + 1);
+      newMonth = viewMonth + 1;
+    }
+    setViewYear(newYear);
+    setViewMonth(newMonth);
+    if (monthFilterActive) {
+      setMonthFilter(true, newYear, newMonth);
     }
   };
 
@@ -96,6 +110,17 @@ export function CommuteCalendar() {
     const t = new Date();
     setViewYear(t.getFullYear());
     setViewMonth(t.getMonth());
+    if (monthFilterActive) {
+      setMonthFilter(true, t.getFullYear(), t.getMonth());
+    }
+  };
+
+  const handleMonthTitleClick = () => {
+    if (monthFilterActive) {
+      setMonthFilter(false);
+    } else {
+      setMonthFilter(true, viewYear, viewMonth);
+    }
   };
 
   const countColor = (count: number) => {
@@ -122,6 +147,18 @@ export function CommuteCalendar() {
               </button>
             </span>
           )}
+          {monthFilterActive && (
+            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+              <Filter className="w-3 h-3" />
+              按月筛选
+              <button
+                onClick={() => setMonthFilter(false)}
+                className="hover:text-green-900 transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -137,9 +174,17 @@ export function CommuteCalendar() {
           >
             <ChevronLeft className="w-4 h-4 text-gray-600" />
           </button>
-          <span className="text-sm font-medium text-gray-700 min-w-[5.5rem] text-center">
+          <button
+            onClick={handleMonthTitleClick}
+            className={`text-sm font-medium min-w-[5.5rem] text-center px-2 py-0.5 rounded-md transition-all ${
+              monthFilterActive
+                ? 'bg-green-100 text-green-700 ring-1 ring-green-300 hover:bg-green-200'
+                : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-700'
+            }`}
+            title={monthFilterActive ? '点击恢复原日期范围' : '点击按当月筛选'}
+          >
             {viewYear}年{viewMonth + 1}月
-          </span>
+          </button>
           <button
             onClick={handleNextMonth}
             className="p-1 rounded hover:bg-gray-100 transition-colors"
@@ -217,7 +262,7 @@ export function CommuteCalendar() {
           <span className="inline-block w-3 h-3 rounded-sm bg-indigo-100" /> 3-4次
           <span className="inline-block w-3 h-3 rounded-sm bg-indigo-200" /> 5次+
         </div>
-        <span>点击日期筛选 · 再次点击取消</span>
+        <span>点击日期筛选 · 点击月份标题按月筛选</span>
       </div>
     </div>
   );
