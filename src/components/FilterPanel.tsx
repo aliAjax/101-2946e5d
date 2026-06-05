@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { transportModeLabels, transportModeColors, TransportMode, TimeOfDay, timeOfDayLabels, timeOfDayColors } from '../types/commute';
-import { Filter, Calendar, Sun, Moon, RefreshCw, Star, Clock } from 'lucide-react';
+import { Filter, Calendar, Sun, Moon, RefreshCw, Star, Clock, Bookmark, BookmarkCheck, X, Save, Trash2 } from 'lucide-react';
 
 export function FilterPanel() {
-  const { filters, setFilters, calculateStatistics } = useCommuteStore();
+  const { filters, setFilters, calculateStatistics, filterPresets, saveFilterPreset, deleteFilterPreset, applyFilterPreset } = useCommuteStore();
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [presetName, setPresetName] = useState('');
 
   const handleTimeOfDayToggle = (time: TimeOfDay) => {
     const currentTimes = filters.timeOfDay || [];
@@ -68,6 +71,38 @@ export function FilterPanel() {
     setTimeout(calculateStatistics, 0);
   };
 
+  const handleSavePreset = () => {
+    if (!presetName.trim()) return;
+    saveFilterPreset(presetName.trim());
+    setPresetName('');
+    setIsSavingPreset(false);
+  };
+
+  const handlePresetKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSavePreset();
+    } else if (e.key === 'Escape') {
+      setIsSavingPreset(false);
+      setPresetName('');
+    }
+  };
+
+  const getPresetSummary = (preset: typeof filterPresets[0]) => {
+    const parts: string[] = [];
+    if (preset.isWeekday) parts.push('工作日');
+    if (preset.isWeekend) parts.push('周末');
+    if (preset.transportModes.length > 0) {
+      const labels = preset.transportModes.map(m => transportModeLabels[m]).join('、');
+      parts.push(labels);
+    }
+    if (preset.timeOfDay.length > 0) {
+      const labels = preset.timeOfDay.map(t => timeOfDayLabels[t]).join('、');
+      parts.push(labels);
+    }
+    if (preset.onlyFavorites) parts.push('收藏');
+    return parts.length > 0 ? parts.join(' · ') : '无筛选';
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex items-center justify-between mb-4">
@@ -85,6 +120,81 @@ export function FilterPanel() {
       </div>
 
       <div className="space-y-6">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Bookmark className="w-4 h-4 text-indigo-600" />
+              <span className="text-sm font-medium text-gray-700">常用筛选方案</span>
+            </div>
+            {!isSavingPreset && (
+              <button
+                onClick={() => setIsSavingPreset(true)}
+                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
+              >
+                <Save className="w-3.5 h-3.5" />
+                保存当前方案
+              </button>
+            )}
+          </div>
+
+          {isSavingPreset && (
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={handlePresetKeyDown}
+                placeholder="输入方案名称"
+                autoFocus
+                className="flex-1 px-3 py-1.5 text-sm border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              />
+              <button
+                onClick={handleSavePreset}
+                disabled={!presetName.trim()}
+                className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                保存
+              </button>
+              <button
+                onClick={() => { setIsSavingPreset(false); setPresetName(''); }}
+                className="px-2 py-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {filterPresets.length > 0 ? (
+            <div className="space-y-1.5">
+              {filterPresets.map((preset) => (
+                <div
+                  key={preset.id}
+                  className="group flex items-center gap-1.5 p-2 rounded-lg bg-gray-50 hover:bg-indigo-50 transition-all cursor-pointer border border-transparent hover:border-indigo-200"
+                  onClick={() => applyFilterPreset(preset.id)}
+                >
+                  <BookmarkCheck className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-gray-800 truncate">{preset.name}</div>
+                    <div className="text-[10px] text-gray-400 truncate">{getPresetSummary(preset)}</div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteFilterPreset(preset.id); }}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-300 hover:text-red-500 transition-all shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-400 text-center py-2">
+              暂无保存的方案
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-100" />
+
         <div>
           <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
             <Calendar className="w-4 h-4" />

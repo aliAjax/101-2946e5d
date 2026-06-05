@@ -21,6 +21,18 @@ export interface CommuteRoute {
   timeOfDay: TimeOfDay;
 }
 
+export interface FilterPreset {
+  id: string;
+  name: string;
+  dateRange: { start: string; end: string };
+  isWeekday: boolean | null;
+  isWeekend: boolean | null;
+  transportModes: TransportMode[];
+  timeOfDay: TimeOfDay[];
+  onlyFavorites: boolean;
+  createdAt: string;
+}
+
 export interface FilterOptions {
   isWeekday: boolean | null;
   isWeekend: boolean | null;

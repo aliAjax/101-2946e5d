@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
 import { detectAllAnomalies, getAnomalyIgnoreKey } from '../lib/anomalyDetector';
 
 const STORAGE_KEY = 'commute-data';
+const PRESET_STORAGE_KEY = 'commute-filter-presets';
 
 interface PersistedData {
   routes: CommuteRoute[];
@@ -48,6 +49,26 @@ function migrateLegacyAnomalyId(id: string): string {
   const typeMarker = `-${matchedType}`;
   const typeStart = normalizedId.lastIndexOf(typeMarker);
   return `${normalizedId.slice(0, typeStart)}-${matchedType}`;
+}
+
+function loadPresetsFromStorage(): FilterPreset[] {
+  try {
+    const stored = localStorage.getItem(PRESET_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored) as FilterPreset[];
+    }
+  } catch (e) {
+    console.error('Failed to load presets from localStorage:', e);
+  }
+  return [];
+}
+
+function savePresetsToStorage(presets: FilterPreset[]): void {
+  try {
+    localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets));
+  } catch (e) {
+    console.error('Failed to save presets to localStorage:', e);
+  }
 }
 
 function loadFromStorage(): PersistedData | null {
@@ -128,6 +149,7 @@ interface CommuteState {
   ignoredAnomalyKeys: string[];
   isAnomalyPanelOpen: boolean;
   selectedScoreKey: string | null;
+  filterPresets: FilterPreset[];
   setRoutes: (routes: CommuteRoute[]) => void;
   addRoute: (route: CommuteRoute) => void;
   deleteRoute: (id: string) => void;
@@ -160,6 +182,9 @@ interface CommuteState {
   focusRoute: (routeId: string) => void;
   setSelectedScoreKey: (key: string | null) => void;
   getScoreExplanation: (key: string) => ScoreExplanation | null;
+  saveFilterPreset: (name: string) => void;
+  deleteFilterPreset: (id: string) => void;
+  applyFilterPreset: (id: string) => void;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -203,6 +228,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   ignoredAnomalyKeys: persistedData?.ignoredAnomalyKeys || [],
   isAnomalyPanelOpen: false,
   selectedScoreKey: null,
+  filterPresets: loadPresetsFromStorage(),
 
   setRoutes: (routes) => {
     const sanitizedRoutes = routes.map(sanitizeRoute);
@@ -827,5 +853,49 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       sameODScores,
       sampleWarning: overallWarning,
     };
+  },
+
+  saveFilterPreset: (name) => {
+    const { filters } = get();
+    const newPreset: FilterPreset = {
+      id: `preset-${Date.now()}`,
+      name,
+      dateRange: { ...filters.dateRange },
+      isWeekday: filters.isWeekday,
+      isWeekend: filters.isWeekend,
+      transportModes: [...filters.transportModes],
+      timeOfDay: [...filters.timeOfDay],
+      onlyFavorites: filters.onlyFavorites,
+      createdAt: new Date().toISOString(),
+    };
+    set((state) => ({
+      filterPresets: [...state.filterPresets, newPreset],
+    }));
+    savePresetsToStorage(get().filterPresets);
+  },
+
+  deleteFilterPreset: (id) => {
+    set((state) => ({
+      filterPresets: state.filterPresets.filter(p => p.id !== id),
+    }));
+    savePresetsToStorage(get().filterPresets);
+  },
+
+  applyFilterPreset: (id) => {
+    const preset = get().filterPresets.find(p => p.id === id);
+    if (!preset) return;
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        dateRange: { ...preset.dateRange },
+        isWeekday: preset.isWeekday,
+        isWeekend: preset.isWeekend,
+        transportModes: [...preset.transportModes],
+        timeOfDay: [...preset.timeOfDay],
+        onlyFavorites: preset.onlyFavorites,
+      },
+    }));
+    saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyKeys: get().ignoredAnomalyKeys });
+    setTimeout(() => get().calculateStatistics(), 0);
   },
 }));
