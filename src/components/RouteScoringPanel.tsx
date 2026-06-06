@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
-import { transportModeLabels, transportModeColors, RouteScore } from '../types/commute';
-import { Award, Clock, DollarSign, Heart, RefreshCw, Star, TrendingUp } from 'lucide-react';
+import { transportModeLabels, transportModeColors, RouteScore, WEIGHT_PRESETS, WeightPresetType } from '../types/commute';
+import { Award, Clock, DollarSign, Heart, RefreshCw, Star, TrendingUp, Settings2 } from 'lucide-react';
 
 function ScoreBar({ value, color, label, icon: Icon }: { value: number; color: string; label: string; icon: React.ElementType }) {
   return (
@@ -126,6 +126,8 @@ export function RouteScoringPanel() {
     calculateRouteScores,
     selectedScoreKey,
     setSelectedScoreKey,
+    currentWeightPreset,
+    applyWeightPreset,
   } = useCommuteStore();
   
   const filters = useCommuteStore((s) => s.filters);
@@ -145,7 +147,11 @@ export function RouteScoringPanel() {
   };
 
   const resetWeights = () => {
-    setScoringWeights({ time: 25, cost: 25, comfort: 25, stability: 25 });
+    applyWeightPreset('custom');
+  };
+
+  const handlePresetSelect = (presetType: WeightPresetType) => {
+    applyWeightPreset(presetType);
   };
 
   const topRoutes = useMemo(() => routeScores.slice(0, 5), [routeScores]);
@@ -170,6 +176,25 @@ export function RouteScoringPanel() {
       </div>
 
       <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+        <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-1.5">
+          <Settings2 className="w-4 h-4 text-amber-500" />
+          权重预设
+        </h3>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {WEIGHT_PRESETS.map((preset) => (
+            <button
+              key={preset.type}
+              onClick={() => handlePresetSelect(preset.type)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                currentWeightPreset === preset.type
+                  ? 'bg-amber-500 text-white shadow-md'
+                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+              }`}
+            >
+              {preset.name}
+            </button>
+          ))}
+        </div>
         <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-1.5">
           <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
           调整偏好权重

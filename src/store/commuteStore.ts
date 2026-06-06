@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
 import { detectAllAnomalies, getAnomalyIgnoreKey } from '../lib/anomalyDetector';
 
 const STORAGE_KEY = 'commute-data';
 const PRESET_STORAGE_KEY = 'commute-filter-presets';
+const WEIGHT_STORAGE_KEY = 'commute-weight-preset';
 
 interface PersistedData {
   routes: CommuteRoute[];
@@ -68,6 +69,26 @@ function savePresetsToStorage(presets: FilterPreset[]): void {
     localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets));
   } catch (e) {
     console.error('Failed to save presets to localStorage:', e);
+  }
+}
+
+function loadWeightPresetFromStorage(): { presetType: WeightPresetType; weights: ScoringWeights } | null {
+  try {
+    const stored = localStorage.getItem(WEIGHT_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load weight preset from localStorage:', e);
+  }
+  return null;
+}
+
+function saveWeightPresetToStorage(presetType: WeightPresetType, weights: ScoringWeights): void {
+  try {
+    localStorage.setItem(WEIGHT_STORAGE_KEY, JSON.stringify({ presetType, weights }));
+  } catch (e) {
+    console.error('Failed to save weight preset to localStorage:', e);
   }
 }
 
@@ -148,6 +169,7 @@ interface CommuteState {
   statistics: CommuteStatistics;
   favorites: FavoriteRoute[];
   scoringWeights: ScoringWeights;
+  currentWeightPreset: WeightPresetType;
   routeScores: RouteScore[];
   locations: Location[];
   anomalies: AnomalyRecord[];
@@ -175,6 +197,7 @@ interface CommuteState {
   toggleFavorite: (route: CommuteRoute, note?: string) => void;
   updateFavoriteNote: (id: string, note: string) => void;
   setScoringWeights: (weights: Partial<ScoringWeights>) => void;
+  applyWeightPreset: (presetType: WeightPresetType) => void;
   calculateRouteScores: () => void;
   addLocation: (location: Omit<Location, 'id'>) => void;
   updateLocation: (id: string, location: Partial<Omit<Location, 'id'>>) => void;
@@ -217,6 +240,8 @@ const defaultScoringWeights: ScoringWeights = {
   stability: 25,
 };
 
+const persistedWeightData = loadWeightPresetFromStorage();
+
 export const useCommuteStore = create<CommuteState>((set, get) => ({
   routes: persistedData?.routes || mockRoutes,
   selectedRouteId: persistedData?.selectedRouteId || null,
@@ -231,7 +256,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     totalRoutes: 0,
   },
   favorites: persistedData?.favorites || [],
-  scoringWeights: defaultScoringWeights,
+  scoringWeights: persistedWeightData?.weights || defaultScoringWeights,
+  currentWeightPreset: persistedWeightData?.presetType || 'custom',
   routeScores: [],
   locations: persistedData?.locations || defaultLocations,
   anomalies: [],
@@ -607,7 +633,21 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   setScoringWeights: (weights) => {
     set((state) => ({
       scoringWeights: { ...state.scoringWeights, ...weights },
+      currentWeightPreset: 'custom',
     }));
+    const newWeights = { ...get().scoringWeights, ...weights };
+    saveWeightPresetToStorage('custom', newWeights);
+    get().calculateRouteScores();
+  },
+
+  applyWeightPreset: (presetType) => {
+    const preset = WEIGHT_PRESETS.find(p => p.type === presetType);
+    if (!preset) return;
+    set({
+      scoringWeights: { ...preset.weights },
+      currentWeightPreset: presetType,
+    });
+    saveWeightPresetToStorage(presetType, preset.weights);
     get().calculateRouteScores();
   },
 

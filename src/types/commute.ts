@@ -70,6 +70,42 @@ export interface ScoringWeights {
   stability: number;
 }
 
+export type WeightPresetType = 'commute' | 'save_money' | 'comfort' | 'stability' | 'custom';
+
+export interface WeightPreset {
+  type: WeightPresetType;
+  name: string;
+  weights: ScoringWeights;
+}
+
+export const WEIGHT_PRESETS: WeightPreset[] = [
+  {
+    type: 'commute',
+    name: '通勤优先',
+    weights: { time: 40, cost: 20, comfort: 20, stability: 20 },
+  },
+  {
+    type: 'save_money',
+    name: '省钱优先',
+    weights: { time: 20, cost: 40, comfort: 20, stability: 20 },
+  },
+  {
+    type: 'comfort',
+    name: '舒适优先',
+    weights: { time: 20, cost: 20, comfort: 40, stability: 20 },
+  },
+  {
+    type: 'stability',
+    name: '稳定优先',
+    weights: { time: 20, cost: 20, comfort: 20, stability: 40 },
+  },
+  {
+    type: 'custom',
+    name: '自定义',
+    weights: { time: 25, cost: 25, comfort: 25, stability: 25 },
+  },
+];
+
 export interface RouteScore {
   key: string;
   name: string;
