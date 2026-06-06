@@ -1,8 +1,8 @@
 import { useState, useRef, useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { CommuteRoute, TransportMode, TimeOfDay, transportModeLabels, transportModeColors, timeOfDayLabels, timeOfDayColors } from '../types/commute';
-import { parseCSV, CSVParseResult, CSV_FIELD_LABELS } from '../lib/csvParser';
-import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle, Navigation, EyeOff, Eye } from 'lucide-react';
+import { parseCSV, CSVParseResult, CSV_FIELD_LABELS, CSVDuplicateRow } from '../lib/csvParser';
+import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle, Navigation, EyeOff, Eye, Copy, RefreshCw } from 'lucide-react';
 
 type ImportFormat = 'json' | 'csv';
 type CSVStep = 'input' | 'preview';
@@ -16,7 +16,7 @@ export function AddRouteModal({
   onClose: () => void;
   onOpenLocationManager?: () => void;
 }) {
-  const { addRoute, importRoutes, calculateStatistics, detectAnomalies, addLocation, locations, getLocationByName } = useCommuteStore();
+  const { addRoute, importRoutes, calculateStatistics, detectAnomalies, calculateRouteScores, addLocation, locations, getLocationByName, routes } = useCommuteStore();
 
   const locationOptions = useMemo(() =>
     locations.map(loc => ({
@@ -63,6 +63,8 @@ export function AddRouteModal({
   const [unknownLocationCoords, setUnknownLocationCoords] = useState<Record<string, { lat: string; lng: string }>>({});
   const [skippedUnknownLocations, setSkippedUnknownLocations] = useState<Set<string>>(new Set());
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const [importDuplicates, setImportDuplicates] = useState<Set<string>>(new Set());
+  const [showDuplicateDetails, setShowDuplicateDetails] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resetImportState = () => {
@@ -74,6 +76,8 @@ export function AddRouteModal({
     setUnknownLocationCoords({});
     setSkippedUnknownLocations(new Set());
     setShowErrorDetails(false);
+    setImportDuplicates(new Set());
+    setShowDuplicateDetails(false);
   };
 
   const handleClose = () => {
@@ -106,6 +110,7 @@ export function AddRouteModal({
     addRoute(newRoute);
     calculateStatistics();
     detectAnomalies();
+    calculateRouteScores();
     handleClose();
   };
 
@@ -183,6 +188,7 @@ export function AddRouteModal({
       importRoutes(validRoutes);
       calculateStatistics();
       detectAnomalies();
+      calculateRouteScores();
       handleClose();
     } catch {
       alert('导入失败，请检查JSON格式');
@@ -190,7 +196,7 @@ export function AddRouteModal({
   };
 
   const showCSVPreview = (text: string) => {
-    const result = parseCSV(text, locationLookup);
+    const result = parseCSV(text, locationLookup, routes);
     setCsvResult(result);
     setCsvStep('preview');
     setSelectedValidIds(new Set(result.validRoutes.map(r => r.id)));
@@ -201,6 +207,8 @@ export function AddRouteModal({
     setUnknownLocationCoords(coords);
     setSkippedUnknownLocations(new Set());
     setShowErrorDetails(false);
+    setImportDuplicates(new Set());
+    setShowDuplicateDetails(false);
   };
 
   const handleCSVParse = () => {
@@ -296,6 +304,30 @@ export function AddRouteModal({
     return resolved;
   };
 
+  const toggleImportDuplicate = (routeId: string) => {
+    setImportDuplicates(prev => {
+      const next = new Set(prev);
+      if (next.has(routeId)) {
+        next.delete(routeId);
+      } else {
+        next.add(routeId);
+      }
+      return next;
+    });
+  };
+
+  const getDuplicateRouteIds = (): Set<string> => {
+    return new Set(csvResult?.duplicateRows.map(r => r.route.id) || []);
+  };
+
+  const isRouteDuplicate = (routeId: string): boolean => {
+    return getDuplicateRouteIds().has(routeId);
+  };
+
+  const shouldImportDuplicate = (routeId: string): boolean => {
+    return importDuplicates.has(routeId);
+  };
+
   const handleCSVConfirmImport = () => {
     if (!csvResult) return;
 
@@ -303,6 +335,10 @@ export function AddRouteModal({
 
     csvResult.validRoutes.forEach(route => {
       if (selectedValidIds.has(route.id)) {
+        const isDuplicate = isRouteDuplicate(route.id);
+        if (isDuplicate && !shouldImportDuplicate(route.id)) {
+          return;
+        }
         routesToImport.push(route);
       }
     });
@@ -324,6 +360,10 @@ export function AddRouteModal({
     csvResult.unknownLocationRows.forEach(row => {
       const status = getUnknownRowStatus(row);
       if (status === 'resolved') {
+        const isDuplicate = isRouteDuplicate(row.route.id);
+        if (isDuplicate && !shouldImportDuplicate(row.route.id)) {
+          return;
+        }
         routesToImport.push(row.route);
       }
     });
@@ -333,15 +373,30 @@ export function AddRouteModal({
     importRoutes(routesToImport);
     calculateStatistics();
     detectAnomalies();
+    calculateRouteScores();
     handleClose();
   };
 
   const getImportCount = (): number => {
     if (!csvResult) return 0;
     let count = 0;
-    count += selectedValidIds.size;
+    csvResult.validRoutes.forEach(route => {
+      if (selectedValidIds.has(route.id)) {
+        const isDuplicate = isRouteDuplicate(route.id);
+        if (isDuplicate && !shouldImportDuplicate(route.id)) {
+          return;
+        }
+        count++;
+      }
+    });
     csvResult.unknownLocationRows.forEach(row => {
-      if (getUnknownRowStatus(row) === 'resolved') count++;
+      if (getUnknownRowStatus(row) === 'resolved') {
+        const isDuplicate = isRouteDuplicate(row.route.id);
+        if (isDuplicate && !shouldImportDuplicate(row.route.id)) {
+          return;
+        }
+        count++;
+      }
     });
     return count;
   };
@@ -722,6 +777,15 @@ export function AddRouteModal({
                             </div>
                           </div>
                         )}
+
+                        {csvResult.duplicateRows.length > 0 && (
+                          <div className="flex items-center gap-2 p-2 bg-purple-50 rounded-lg col-span-2">
+                            <Copy className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                            <span className="text-sm text-purple-800">
+                              可能重复：<strong>{csvResult.duplicateRows.length}</strong> 条（默认跳过，可在下方选择是否导入）
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {csvResult.validRoutes.length > 0 && (
@@ -749,36 +813,53 @@ export function AddRouteModal({
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">费用</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">拥挤</th>
                                   <th className="text-left px-2 py-1.5 text-gray-600 font-medium">日期</th>
+                                  <th className="text-left px-2 py-1.5 text-gray-600 font-medium w-16">状态</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {csvResult.validRoutes.map((route) => (
-                                  <tr key={route.id} className={`border-t border-gray-100 ${selectedValidIds.has(route.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                                    <td className="px-2 py-1.5 text-center">
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedValidIds.has(route.id)}
-                                        onChange={() => toggleValidRoute(route.id)}
-                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                      />
-                                    </td>
-                                    <td className="px-2 py-1.5 text-gray-800">
-                                      {route.origin} → {route.destination}
-                                    </td>
-                                    <td className="px-2 py-1.5">
-                                      <span
-                                        className="inline-block px-1.5 py-0.5 rounded text-white text-[10px] font-medium"
-                                        style={{ backgroundColor: transportModeColors[route.transportMode] }}
-                                      >
-                                        {transportModeLabels[route.transportMode]}
-                                      </span>
-                                    </td>
-                                    <td className="px-2 py-1.5 text-gray-700">{route.duration}分</td>
-                                    <td className="px-2 py-1.5 text-gray-700">¥{route.cost}</td>
-                                    <td className="px-2 py-1.5 text-gray-700">{route.crowdLevel}</td>
-                                    <td className="px-2 py-1.5 text-gray-600">{route.date}</td>
-                                  </tr>
-                                ))}
+                                {csvResult.validRoutes.map((route) => {
+                                  const isDup = isRouteDuplicate(route.id);
+                                  const importDup = shouldImportDuplicate(route.id);
+                                  return (
+                                    <tr key={route.id} className={`border-t border-gray-100 ${
+                                      selectedValidIds.has(route.id) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                                    } ${isDup && !importDup ? 'opacity-60' : ''}`}>
+                                      <td className="px-2 py-1.5 text-center">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedValidIds.has(route.id)}
+                                          onChange={() => toggleValidRoute(route.id)}
+                                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                      </td>
+                                      <td className="px-2 py-1.5 text-gray-800">
+                                        {route.origin} → {route.destination}
+                                      </td>
+                                      <td className="px-2 py-1.5">
+                                        <span
+                                          className="inline-block px-1.5 py-0.5 rounded text-white text-[10px] font-medium"
+                                          style={{ backgroundColor: transportModeColors[route.transportMode] }}
+                                        >
+                                          {transportModeLabels[route.transportMode]}
+                                        </span>
+                                      </td>
+                                      <td className="px-2 py-1.5 text-gray-700">{route.duration}分</td>
+                                      <td className="px-2 py-1.5 text-gray-700">¥{route.cost}</td>
+                                      <td className="px-2 py-1.5 text-gray-700">{route.crowdLevel}</td>
+                                      <td className="px-2 py-1.5 text-gray-600">{route.date}</td>
+                                      <td className="px-2 py-1.5">
+                                        {isDup && (
+                                          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium px-1 py-0.5 rounded ${
+                                            importDup ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
+                                          }`}>
+                                            <Copy className="w-2.5 h-2.5" />
+                                            {importDup ? '导入' : '跳过'}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -951,6 +1032,85 @@ export function AddRouteModal({
                               </table>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {csvResult.duplicateRows.length > 0 && (
+                        <div>
+                          <button
+                            onClick={() => setShowDuplicateDetails(!showDuplicateDetails)}
+                            className="flex items-center gap-1.5 text-sm font-medium text-purple-700 mb-2 hover:text-purple-900 transition-colors"
+                          >
+                            <Copy className="w-4 h-4" />
+                            重复记录处理（{csvResult.duplicateRows.length} 条）
+                            <span className="text-xs text-gray-400 ml-1">
+                              {showDuplicateDetails ? '收起' : '展开'}
+                            </span>
+                          </button>
+                          {showDuplicateDetails && (
+                            <div className="border border-purple-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-purple-50 sticky top-0">
+                                  <tr>
+                                    <th className="text-left px-2 py-1.5 text-purple-600 font-medium">行号</th>
+                                    <th className="text-left px-2 py-1.5 text-purple-600 font-medium">路线</th>
+                                    <th className="text-left px-2 py-1.5 text-purple-600 font-medium">类型</th>
+                                    <th className="text-left px-2 py-1.5 text-purple-600 font-medium">操作</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {csvResult.duplicateRows.map((dup, idx) => {
+                                    const importDup = shouldImportDuplicate(dup.route.id);
+                                    return (
+                                      <tr key={idx} className={`border-t border-purple-100 ${!importDup ? 'bg-gray-50 opacity-70' : ''}`}>
+                                        <td className="px-2 py-1.5 text-purple-700 font-mono">第{dup.row}行</td>
+                                        <td className="px-2 py-1.5 text-gray-800">
+                                          {dup.route.origin} → {dup.route.destination}
+                                          <div className="text-[10px] text-gray-500">
+                                            {transportModeLabels[dup.route.transportMode]} · {dup.route.date}
+                                          </div>
+                                        </td>
+                                        <td className="px-2 py-1.5">
+                                          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                            dup.duplicateType === 'exact'
+                                              ? 'bg-red-100 text-red-700'
+                                              : 'bg-amber-100 text-amber-700'
+                                          }`}>
+                                            {dup.duplicateType === 'exact' ? '完全重复' : '同日同路线'}
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-1.5">
+                                          <button
+                                            onClick={() => toggleImportDuplicate(dup.route.id)}
+                                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                              importDup
+                                                ? 'bg-purple-600 text-white hover:bg-purple-700'
+                                                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                                            }`}
+                                          >
+                                            {importDup ? (
+                                              <>
+                                                <CheckCircle className="w-3 h-3" />
+                                                导入
+                                              </>
+                                            ) : (
+                                              <>
+                                                <EyeOff className="w-3 h-3" />
+                                                跳过
+                                              </>
+                                            )}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                          <p className="text-xs text-gray-500 mt-1">
+                            默认跳过所有重复记录，可点击"导入"按钮选择仍然导入
+                          </p>
                         </div>
                       )}
 

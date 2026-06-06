@@ -50,12 +50,20 @@ export interface CSVUnknownLocationRow {
   unknownDestinations: string[];
 }
 
+export interface CSVDuplicateRow {
+  route: CommuteRoute;
+  row: number;
+  existingRouteId: string;
+  duplicateType: 'exact' | 'same_od_mode_date';
+}
+
 export interface CSVParseResult {
   validRoutes: CommuteRoute[];
   errors: CSVRowError[];
   missingFields: string[];
   unknownLocationRows: CSVUnknownLocationRow[];
   unknownLocations: string[];
+  duplicateRows: CSVDuplicateRow[];
   totalRows: number;
 }
 
@@ -120,10 +128,10 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVParseResult {
+export function parseCSV(csvText: string, locationLookup: LocationLookup, existingRoutes: CommuteRoute[] = []): CSVParseResult {
   const lines = csvText.trim().split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) {
-    return { validRoutes: [], errors: [{ row: 0, message: 'CSV数据不足，至少需要表头行和一行数据' }], missingFields: [], unknownLocationRows: [], unknownLocations: [], totalRows: 0 };
+    return { validRoutes: [], errors: [{ row: 0, message: 'CSV数据不足，至少需要表头行和一行数据' }], missingFields: [], unknownLocationRows: [], unknownLocations: [], duplicateRows: [], totalRows: 0 };
   }
 
   const headerRow = parseCSVLine(lines[0]);
@@ -150,6 +158,7 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
   const validRoutes: CommuteRoute[] = [];
   const errors: CSVRowError[] = [];
   const unknownLocationRows: CSVUnknownLocationRow[] = [];
+  const duplicateRows: CSVDuplicateRow[] = [];
   let totalRows = 0;
 
   for (let i = 1; i < lines.length; i++) {
@@ -248,5 +257,49 @@ export function parseCSV(csvText: string, locationLookup: LocationLookup): CSVPa
     r.unknownDestinations.forEach((n) => unknownLocationsSet.add(n));
   });
 
-  return { validRoutes, errors, missingFields, unknownLocationRows, unknownLocations: Array.from(unknownLocationsSet), totalRows };
+  const allProcessedRoutes = [...validRoutes, ...unknownLocationRows.map(r => r.route)];
+  
+  allProcessedRoutes.forEach((route, idx) => {
+    const originalRow = idx < validRoutes.length 
+      ? validRoutes[idx] 
+      : unknownLocationRows[idx - validRoutes.length].row;
+    const rowNum = typeof originalRow === 'number' ? originalRow : idx + 2;
+    
+    for (const existing of existingRoutes) {
+      const isExactMatch = 
+        route.origin === existing.origin &&
+        route.destination === existing.destination &&
+        route.transportMode === existing.transportMode &&
+        route.duration === existing.duration &&
+        route.cost === existing.cost &&
+        route.crowdLevel === existing.crowdLevel &&
+        route.date === existing.date;
+
+      const isSameODModeDate = 
+        route.origin === existing.origin &&
+        route.destination === existing.destination &&
+        route.transportMode === existing.transportMode &&
+        route.date === existing.date;
+
+      if (isExactMatch) {
+        duplicateRows.push({
+          route,
+          row: rowNum,
+          existingRouteId: existing.id,
+          duplicateType: 'exact',
+        });
+        break;
+      } else if (isSameODModeDate) {
+        duplicateRows.push({
+          route,
+          row: rowNum,
+          existingRouteId: existing.id,
+          duplicateType: 'same_od_mode_date',
+        });
+        break;
+      }
+    }
+  });
+
+  return { validRoutes, errors, missingFields, unknownLocationRows, unknownLocations: Array.from(unknownLocationsSet), duplicateRows, totalRows };
 }
