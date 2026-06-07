@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS, LocationImpact, Snapshot, SnapshotData } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS, LocationImpact, Snapshot } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
 import { detectAllAnomalies, getAnomalyIgnoreKey } from '../lib/anomalyDetector';
 

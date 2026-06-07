@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
-import { Camera, Clock, MapPin, Star, Calendar, Trash2, RotateCcw, Plus, Edit2, Check, X, Info } from 'lucide-react';
+import { Camera, Clock, MapPin, Star, Calendar, Trash2, RotateCcw, Plus, Edit2, Check, Info } from 'lucide-react';
 
 export function SnapshotPanel() {
   const { snapshots, createSnapshot, deleteSnapshot, restoreSnapshot, updateSnapshot } = useCommuteStore();
