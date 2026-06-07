@@ -3,7 +3,6 @@ import { useCommuteStore } from '../store/commuteStore';
 import { Location, LocationImpact } from '../types/commute';
 import {
   AlertTriangle,
-  MapPin,
   Route,
   Star,
   Filter,
@@ -146,10 +145,10 @@ export function LocationImpactModal({
                   )}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-800">保留历史数据</p>
+                  <p className="text-sm font-medium text-gray-800">保留历史路线</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    路线和收藏数据将被保留，但起终点会被标记为「[已删除] {location.name}」。
-                    评分方案将重新计算，选中状态会被清除。适合需要保留历史记录的场景。
+                    路线数据将被保留，起终点会被标记为「[已删除] {location.name}」。
+                    关联收藏会被移除，评分方案将重新计算，选中状态会被清除。
                   </p>
                 </div>
               </label>

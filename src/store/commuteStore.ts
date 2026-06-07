@@ -601,7 +601,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         return updated;
       });
 
-      let newFilters = { ...state.filters };
+      const newFilters = { ...state.filters };
       if (state.filters.origin === oldName) {
         newFilters.origin = newName;
       }
@@ -718,22 +718,9 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
           return updated;
         });
 
-        newFavorites = state.favorites.map((fav) => {
-          const updated = { ...fav };
-          let changed = false;
-          if (fav.origin === locationName) {
-            updated.origin = missingMarker;
-            changed = true;
-          }
-          if (fav.destination === locationName) {
-            updated.destination = missingMarker;
-            changed = true;
-          }
-          if (changed) {
-            updated.name = `${updated.origin} → ${updated.destination}`;
-          }
-          return updated;
-        });
+        newFavorites = state.favorites.filter(
+          (fav) => fav.origin !== locationName && fav.destination !== locationName
+        );
 
         newAnomalies = state.anomalies.map((anomaly) => {
           const updatedRoute = { ...anomaly.route };
@@ -757,7 +744,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         newSelectedScoreKey = null;
       }
 
-      let newFilters = { ...state.filters };
+      const newFilters = { ...state.filters };
       if (state.filters.origin === locationName) {
         newFilters.origin = null;
       }
