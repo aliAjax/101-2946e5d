@@ -228,3 +228,16 @@ export const anomalySeverityLabels: Record<AnomalyRecord['severity'], string> = 
   high: '高',
   critical: '严重',
 };
+
+export interface LocationImpact {
+  affectedRoutes: CommuteRoute[];
+  affectedFavorites: FavoriteRoute[];
+  affectedFilters: {
+    origin: boolean;
+    destination: boolean;
+  };
+  affectedAnomalies: AnomalyRecord[];
+  affectedAnomalyIgnoreKeys: string[];
+  affectedFilterPresets: FilterPreset[];
+  totalAffected: number;
+}

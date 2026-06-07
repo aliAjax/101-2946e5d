@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { Location } from '../types/commute';
+import { LocationImpactModal } from './LocationImpactModal';
 import { MapPin, Plus, X, Edit2, Trash2, AlertTriangle, Check, RotateCcw, Navigation } from 'lucide-react';
 
 interface LocationFormData {
@@ -15,6 +16,11 @@ const defaultFormData: LocationFormData = {
   lng: 116.4,
 };
 
+type PendingOperation =
+  | { type: 'delete'; location: Location }
+  | { type: 'rename'; location: Location; newName: string }
+  | null;
+
 export function LocationManager({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const {
     locations,
@@ -23,13 +29,15 @@ export function LocationManager({ isOpen, onClose }: { isOpen: boolean; onClose:
     deleteLocation,
     getLocationRouteCount,
     resetLocationsToDefault,
+    renameLocation,
+    deleteLocationWithOptions,
   } = useCommuteStore();
 
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [formData, setFormData] = useState<LocationFormData>(defaultFormData);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [pendingOperation, setPendingOperation] = useState<PendingOperation>(null);
 
   const resetForm = () => {
     setFormData(defaultFormData);
@@ -54,31 +62,57 @@ export function LocationManager({ isOpen, onClose }: { isOpen: boolean; onClose:
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) return;
 
     if (editingLocation) {
-      updateLocation(editingLocation.id, formData);
+      const nameChanged = formData.name.trim() !== editingLocation.name;
+      if (nameChanged) {
+        setPendingOperation({
+          type: 'rename',
+          location: editingLocation,
+          newName: formData.name.trim(),
+        });
+      } else {
+        updateLocation(editingLocation.id, {
+          lat: formData.lat,
+          lng: formData.lng,
+        });
+        resetForm();
+      }
     } else {
       addLocation(formData);
-    }
-    resetForm();
-  };
-
-  const handleDelete = (id: string) => {
-    const routeCount = getLocationRouteCount(id);
-    if (routeCount > 0) {
-      setDeleteConfirmId(id);
-    } else {
-      deleteLocation(id);
+      resetForm();
     }
   };
 
-  const confirmDelete = () => {
-    if (deleteConfirmId) {
-      deleteLocation(deleteConfirmId);
-      setDeleteConfirmId(null);
+  const handleDelete = (location: Location) => {
+    setPendingOperation({ type: 'delete', location });
+  };
+
+  const handleConfirmOperation = (options?: { keepRoutes: boolean; markAsMissing?: boolean }) => {
+    if (!pendingOperation) return;
+
+    if (pendingOperation.type === 'delete') {
+      if (options) {
+        deleteLocationWithOptions(pendingOperation.location.id, options);
+      } else {
+        deleteLocation(pendingOperation.location.id);
+      }
+    } else if (pendingOperation.type === 'rename') {
+      renameLocation(pendingOperation.location.id, pendingOperation.newName);
+      updateLocation(pendingOperation.location.id, {
+        lat: formData.lat,
+        lng: formData.lng,
+      });
+      resetForm();
     }
+
+    setPendingOperation(null);
+  };
+
+  const handleCancelOperation = () => {
+    setPendingOperation(null);
   };
 
   const handleReset = () => {
@@ -86,10 +120,10 @@ export function LocationManager({ isOpen, onClose }: { isOpen: boolean; onClose:
     setShowResetConfirm(false);
   };
 
-  const locationToDelete = deleteConfirmId ? locations.find(l => l.id === deleteConfirmId) : null;
-  const routeCountToDelete = locationToDelete ? getLocationRouteCount(locationToDelete.id) : 0;
-
   if (!isOpen) return null;
+
+  const impactModalLocation = pendingOperation?.location || null;
+  const isImpactModalOpen = pendingOperation !== null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -219,7 +253,7 @@ export function LocationManager({ isOpen, onClose }: { isOpen: boolean; onClose:
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(location.id)}
+                      onClick={() => handleDelete(location)}
                       className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="删除"
                     >
@@ -280,44 +314,15 @@ export function LocationManager({ isOpen, onClose }: { isOpen: boolean; onClose:
         </div>
       </div>
 
-      {deleteConfirmId && locationToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-red-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800">确认删除</h3>
-                <p className="text-sm text-gray-500">地点: {locationToDelete.name}</p>
-              </div>
-            </div>
-
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-red-800">
-                <strong>警告：</strong>此地点关联了 <span className="font-bold text-red-600">{routeCountToDelete}</span> 条路线数据。
-              </p>
-              <p className="text-sm text-red-600 mt-1">
-                删除后，这些路线将保留在系统中，但在地图上可能无法正常显示。
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                className="flex-1 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="flex-1 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
-        </div>
+      {impactModalLocation && (
+        <LocationImpactModal
+          isOpen={isImpactModalOpen}
+          onClose={handleCancelOperation}
+          location={impactModalLocation}
+          operationType={pendingOperation!.type}
+          newName={pendingOperation!.type === 'rename' ? pendingOperation.newName : undefined}
+          onConfirm={handleConfirmOperation}
+        />
       )}
     </div>
   );

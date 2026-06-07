@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS, LocationImpact } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
 import { detectAllAnomalies, getAnomalyIgnoreKey } from '../lib/anomalyDetector';
 
@@ -205,6 +205,9 @@ interface CommuteState {
   getLocationById: (id: string) => Location | undefined;
   getLocationByName: (name: string) => Location | undefined;
   getLocationRouteCount: (locationId: string) => number;
+  getLocationImpact: (locationId: string) => LocationImpact;
+  renameLocation: (id: string, newName: string) => void;
+  deleteLocationWithOptions: (id: string, options: { keepRoutes: boolean; markAsMissing?: boolean }) => void;
   resetLocationsToDefault: () => void;
   detectAnomalies: () => void;
   ignoreAnomaly: (anomalyId: string) => void;
@@ -464,6 +467,310 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     return get().routes.filter(
       (route) => route.origin === location.name || route.destination === location.name
     ).length;
+  },
+
+  getLocationImpact: (locationId) => {
+    const location = get().getLocationById(locationId);
+    if (!location) {
+      return {
+        affectedRoutes: [],
+        affectedFavorites: [],
+        affectedFilters: { origin: false, destination: false },
+        affectedAnomalies: [],
+        affectedAnomalyIgnoreKeys: [],
+        affectedFilterPresets: [],
+        totalAffected: 0,
+      };
+    }
+
+    const locationName = location.name;
+    const { routes, favorites, filters, anomalies, ignoredAnomalyKeys, filterPresets } = get();
+
+    const affectedRoutes = routes.filter(
+      (r) => r.origin === locationName || r.destination === locationName
+    );
+
+    const affectedFavorites = favorites.filter(
+      (f) => f.origin === locationName || f.destination === locationName
+    );
+
+    const affectedFilters = {
+      origin: filters.origin === locationName,
+      destination: filters.destination === locationName,
+    };
+
+    const affectedAnomalies = anomalies.filter(
+      (a) => a.route.origin === locationName || a.route.destination === locationName
+    );
+
+    const affectedRouteIds = new Set(affectedRoutes.map((r) => r.id));
+    const affectedAnomalyIgnoreKeys = ignoredAnomalyKeys.filter((key) => {
+      const routeId = key.split('-').slice(0, -1).join('-');
+      return affectedRouteIds.has(routeId);
+    });
+
+    const affectedFilterPresets = filterPresets.filter((preset) => {
+      for (const route of affectedRoutes) {
+        if (
+          preset.transportModes.includes(route.transportMode) ||
+          (preset.isWeekday && isWeekday(route.date)) ||
+          (preset.isWeekend && !isWeekday(route.date))
+        ) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    const totalAffected =
+      affectedRoutes.length +
+      affectedFavorites.length +
+      (affectedFilters.origin ? 1 : 0) +
+      (affectedFilters.destination ? 1 : 0) +
+      affectedAnomalies.length +
+      affectedAnomalyIgnoreKeys.length +
+      affectedFilterPresets.length;
+
+    return {
+      affectedRoutes,
+      affectedFavorites,
+      affectedFilters,
+      affectedAnomalies,
+      affectedAnomalyIgnoreKeys,
+      affectedFilterPresets,
+      totalAffected,
+    };
+  },
+
+  renameLocation: (id, newName) => {
+    set((state) => {
+      const oldLocation = state.locations.find((loc) => loc.id === id);
+      const oldName = oldLocation?.name;
+
+      if (!oldName || !newName || oldName === newName) {
+        return state;
+      }
+
+      const newRoutes = state.routes.map((route) => {
+        const updated = { ...route };
+        let changed = false;
+        if (route.origin === oldName) {
+          updated.origin = newName;
+          changed = true;
+        }
+        if (route.destination === oldName) {
+          updated.destination = newName;
+          changed = true;
+        }
+        if (changed) {
+          updated.name = `${updated.origin} → ${updated.destination}`;
+        }
+        return updated;
+      });
+
+      const newFavorites = state.favorites.map((fav) => {
+        const updated = { ...fav };
+        let changed = false;
+        if (fav.origin === oldName) {
+          updated.origin = newName;
+          changed = true;
+        }
+        if (fav.destination === oldName) {
+          updated.destination = newName;
+          changed = true;
+        }
+        if (changed) {
+          updated.name = `${updated.origin} → ${updated.destination}`;
+        }
+        return updated;
+      });
+
+      let newFilters = { ...state.filters };
+      if (state.filters.origin === oldName) {
+        newFilters.origin = newName;
+      }
+      if (state.filters.destination === oldName) {
+        newFilters.destination = newName;
+      }
+
+      let newSelectedRouteId = state.selectedRouteId;
+      if (state.selectedRouteId) {
+        const selectedRoute = state.routes.find((r) => r.id === state.selectedRouteId);
+        if (selectedRoute && (selectedRoute.origin === oldName || selectedRoute.destination === oldName)) {
+          newSelectedRouteId = null;
+        }
+      }
+
+      const newAnomalies = state.anomalies.map((anomaly) => {
+        const updatedRoute = { ...anomaly.route };
+        let changed = false;
+        if (updatedRoute.origin === oldName) {
+          updatedRoute.origin = newName;
+          changed = true;
+        }
+        if (updatedRoute.destination === oldName) {
+          updatedRoute.destination = newName;
+          changed = true;
+        }
+        if (changed) {
+          updatedRoute.name = `${updatedRoute.origin} → ${updatedRoute.destination}`;
+          return { ...anomaly, route: updatedRoute };
+        }
+        return anomaly;
+      });
+
+      return {
+        locations: state.locations.map((loc) =>
+          loc.id === id ? { ...loc, name: newName } : loc
+        ),
+        routes: newRoutes,
+        favorites: newFavorites,
+        filters: newFilters,
+        selectedRouteId: newSelectedRouteId,
+        anomalies: newAnomalies,
+      };
+    });
+    saveToStorage({
+      routes: get().routes,
+      selectedRouteId: get().selectedRouteId,
+      filters: get().filters,
+      favorites: get().favorites,
+      locations: get().locations,
+      ignoredAnomalyKeys: get().ignoredAnomalyKeys,
+    });
+    get().calculateStatistics();
+    get().calculateRouteScores();
+    get().detectAnomalies();
+  },
+
+  deleteLocationWithOptions: (id, options) => {
+    set((state) => {
+      const location = state.locations.find((loc) => loc.id === id);
+      if (!location) return state;
+
+      const locationName = location.name;
+      let newRoutes = state.routes;
+      let newFavorites = state.favorites;
+      let newAnomalies = state.anomalies;
+      let newIgnoredKeys = state.ignoredAnomalyKeys;
+      let newSelectedRouteId = state.selectedRouteId;
+      let newSelectedScoreKey = state.selectedScoreKey;
+
+      if (!options.keepRoutes) {
+        const affectedRouteIds = new Set(
+          state.routes
+            .filter((r) => r.origin === locationName || r.destination === locationName)
+            .map((r) => r.id)
+        );
+
+        newRoutes = state.routes.filter((r) => !affectedRouteIds.has(r.id));
+        newFavorites = state.favorites.filter(
+          (f) => f.origin !== locationName && f.destination !== locationName
+        );
+        newAnomalies = state.anomalies.filter((a) => !affectedRouteIds.has(a.routeId));
+        newIgnoredKeys = state.ignoredAnomalyKeys.filter((key) => {
+          const routeId = key.split('-').slice(0, -1).join('-');
+          return !affectedRouteIds.has(routeId);
+        });
+
+        if (state.selectedRouteId && affectedRouteIds.has(state.selectedRouteId)) {
+          newSelectedRouteId = null;
+        }
+
+        if (state.selectedScoreKey) {
+          const [origin, dest] = state.selectedScoreKey.split('-');
+          if (origin === locationName || dest === locationName) {
+            newSelectedScoreKey = null;
+          }
+        }
+      } else if (options.markAsMissing) {
+        const missingMarker = `[已删除] ${locationName}`;
+        newRoutes = state.routes.map((route) => {
+          const updated = { ...route };
+          let changed = false;
+          if (route.origin === locationName) {
+            updated.origin = missingMarker;
+            changed = true;
+          }
+          if (route.destination === locationName) {
+            updated.destination = missingMarker;
+            changed = true;
+          }
+          if (changed) {
+            updated.name = `${updated.origin} → ${updated.destination}`;
+          }
+          return updated;
+        });
+
+        newFavorites = state.favorites.map((fav) => {
+          const updated = { ...fav };
+          let changed = false;
+          if (fav.origin === locationName) {
+            updated.origin = missingMarker;
+            changed = true;
+          }
+          if (fav.destination === locationName) {
+            updated.destination = missingMarker;
+            changed = true;
+          }
+          if (changed) {
+            updated.name = `${updated.origin} → ${updated.destination}`;
+          }
+          return updated;
+        });
+
+        newAnomalies = state.anomalies.map((anomaly) => {
+          const updatedRoute = { ...anomaly.route };
+          let changed = false;
+          if (updatedRoute.origin === locationName) {
+            updatedRoute.origin = missingMarker;
+            changed = true;
+          }
+          if (updatedRoute.destination === locationName) {
+            updatedRoute.destination = missingMarker;
+            changed = true;
+          }
+          if (changed) {
+            updatedRoute.name = `${updatedRoute.origin} → ${updatedRoute.destination}`;
+            return { ...anomaly, route: updatedRoute };
+          }
+          return anomaly;
+        });
+
+        newSelectedRouteId = null;
+        newSelectedScoreKey = null;
+      }
+
+      let newFilters = { ...state.filters };
+      if (state.filters.origin === locationName) {
+        newFilters.origin = null;
+      }
+      if (state.filters.destination === locationName) {
+        newFilters.destination = null;
+      }
+
+      return {
+        locations: state.locations.filter((loc) => loc.id !== id),
+        routes: newRoutes,
+        favorites: newFavorites,
+        anomalies: newAnomalies,
+        ignoredAnomalyKeys: newIgnoredKeys,
+        filters: newFilters,
+        selectedRouteId: newSelectedRouteId,
+        selectedScoreKey: newSelectedScoreKey,
+      };
+    });
+    saveToStorage({
+      routes: get().routes,
+      selectedRouteId: get().selectedRouteId,
+      filters: get().filters,
+      favorites: get().favorites,
+      locations: get().locations,
+      ignoredAnomalyKeys: get().ignoredAnomalyKeys,
+    });
+    get().calculateStatistics();
+    get().calculateRouteScores();
+    get().detectAnomalies();
   },
 
   resetLocationsToDefault: () => {
