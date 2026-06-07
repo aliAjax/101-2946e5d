@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
-import { Settings, X, Database, RotateCcw, Info, HardDrive } from 'lucide-react';
+import { Settings, X, Database, RotateCcw, Info, HardDrive, Camera } from 'lucide-react';
+import { SnapshotPanel } from './SnapshotPanel';
 
 export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { routes, resetToMockData, calculateStatistics, filters, selectedRouteId } = useCommuteStore();
@@ -119,6 +120,14 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+              <Camera className="w-4 h-4" />
+              数据快照
+            </h3>
+            <SnapshotPanel />
           </div>
 
           <div className="pt-4 border-t border-gray-100">

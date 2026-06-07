@@ -243,3 +243,26 @@ export interface LocationImpact {
   selectedScoreKeyAffected: boolean;
   totalAffected: number;
 }
+
+export interface SnapshotData {
+  routes: CommuteRoute[];
+  favorites: FavoriteRoute[];
+  locations: Location[];
+  filters: FilterOptions;
+  ignoredAnomalyKeys: string[];
+  scoringWeights: ScoringWeights;
+}
+
+export interface Snapshot {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  data: SnapshotData;
+  summary: {
+    routeCount: number;
+    favoriteCount: number;
+    locationCount: number;
+    dateRange: { start: string; end: string } | null;
+  };
+}

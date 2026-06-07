@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS, LocationImpact } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS, LocationImpact, Snapshot, SnapshotData } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
 import { detectAllAnomalies, getAnomalyIgnoreKey } from '../lib/anomalyDetector';
 
 const STORAGE_KEY = 'commute-data';
 const PRESET_STORAGE_KEY = 'commute-filter-presets';
 const WEIGHT_STORAGE_KEY = 'commute-weight-preset';
+const SNAPSHOT_STORAGE_KEY = 'commute-snapshots';
 
 interface PersistedData {
   routes: CommuteRoute[];
@@ -89,6 +90,26 @@ function saveWeightPresetToStorage(presetType: WeightPresetType, weights: Scorin
     localStorage.setItem(WEIGHT_STORAGE_KEY, JSON.stringify({ presetType, weights }));
   } catch (e) {
     console.error('Failed to save weight preset to localStorage:', e);
+  }
+}
+
+function loadSnapshotsFromStorage(): Snapshot[] {
+  try {
+    const stored = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored) as Snapshot[];
+    }
+  } catch (e) {
+    console.error('Failed to load snapshots from localStorage:', e);
+  }
+  return [];
+}
+
+function saveSnapshotsToStorage(snapshots: Snapshot[]): void {
+  try {
+    localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshots));
+  } catch (e) {
+    console.error('Failed to save snapshots to localStorage:', e);
   }
 }
 
@@ -221,6 +242,11 @@ interface CommuteState {
   saveFilterPreset: (name: string) => void;
   deleteFilterPreset: (id: string) => void;
   applyFilterPreset: (id: string) => void;
+  snapshots: Snapshot[];
+  createSnapshot: (name: string, description?: string) => void;
+  deleteSnapshot: (id: string) => void;
+  restoreSnapshot: (id: string) => void;
+  updateSnapshot: (id: string, updates: Partial<Pick<Snapshot, 'name' | 'description'>>) => void;
 }
 
 function isWeekday(dateStr: string): boolean {
@@ -270,6 +296,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   filterPresets: loadPresetsFromStorage(),
   monthFilterActive: false,
   previousDateRange: null,
+  snapshots: loadSnapshotsFromStorage(),
 
   setRoutes: (routes) => {
     const sanitizedRoutes = routes.map(sanitizeRoute);
@@ -1342,5 +1369,93 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
     }));
     saveToStorage({ routes: get().routes, selectedRouteId: get().selectedRouteId, filters: get().filters, favorites: get().favorites, locations: get().locations, ignoredAnomalyKeys: get().ignoredAnomalyKeys });
     setTimeout(() => get().calculateStatistics(), 0);
+  },
+
+  createSnapshot: (name, description = '') => {
+    const { routes, favorites, locations, filters, ignoredAnomalyKeys, scoringWeights, snapshots } = get();
+    
+    const sortedDates = routes.map(r => r.date).sort();
+    const dateRange = sortedDates.length > 0 
+      ? { start: sortedDates[0], end: sortedDates[sortedDates.length - 1] }
+      : null;
+
+    const newSnapshot: Snapshot = {
+      id: `snap-${Date.now()}`,
+      name,
+      description,
+      createdAt: new Date().toISOString(),
+      data: {
+        routes: JSON.parse(JSON.stringify(routes)),
+        favorites: JSON.parse(JSON.stringify(favorites)),
+        locations: JSON.parse(JSON.stringify(locations)),
+        filters: JSON.parse(JSON.stringify(filters)),
+        ignoredAnomalyKeys: JSON.parse(JSON.stringify(ignoredAnomalyKeys)),
+        scoringWeights: JSON.parse(JSON.stringify(scoringWeights)),
+      },
+      summary: {
+        routeCount: routes.length,
+        favoriteCount: favorites.length,
+        locationCount: locations.length,
+        dateRange,
+      },
+    };
+
+    const newSnapshots = [...snapshots, newSnapshot];
+    set({ snapshots: newSnapshots });
+    saveSnapshotsToStorage(newSnapshots);
+  },
+
+  deleteSnapshot: (id) => {
+    const newSnapshots = get().snapshots.filter(s => s.id !== id);
+    set({ snapshots: newSnapshots });
+    saveSnapshotsToStorage(newSnapshots);
+  },
+
+  restoreSnapshot: (id) => {
+    const snapshot = get().snapshots.find(s => s.id === id);
+    if (!snapshot) return;
+
+    const { data } = snapshot;
+    const sanitizedRoutes = data.routes.map(sanitizeRoute);
+
+    set({
+      routes: sanitizedRoutes,
+      favorites: data.favorites,
+      locations: data.locations,
+      filters: data.filters,
+      ignoredAnomalyKeys: data.ignoredAnomalyKeys,
+      scoringWeights: data.scoringWeights,
+      selectedRouteId: null,
+      selectedDate: null,
+      selectedScoreKey: null,
+      monthFilterActive: false,
+      previousDateRange: null,
+      anomalies: [],
+      routeScores: [],
+    });
+
+    saveToStorage({
+      routes: sanitizedRoutes,
+      selectedRouteId: null,
+      filters: data.filters,
+      favorites: data.favorites,
+      locations: data.locations,
+      ignoredAnomalyKeys: data.ignoredAnomalyKeys,
+    });
+    saveWeightPresetToStorage('custom', data.scoringWeights);
+
+    setTimeout(() => {
+      get().calculateStatistics();
+      get().calculateRouteScores();
+      get().detectAnomalies();
+    }, 0);
+  },
+
+  updateSnapshot: (id, updates) => {
+    const newSnapshots = get().snapshots.map(s =>
+      s.id === id ? { ...s, ...updates } : s
+    );
+    set({ snapshots: newSnapshots });
+    saveSnapshotsToStorage(newSnapshots);
   },
 }));
