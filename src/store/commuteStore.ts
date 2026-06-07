@@ -39,7 +39,7 @@ function sanitizeRoute(route: CommuteRoute): CommuteRoute {
   };
 }
 
-function migrateLegacyAnomalyId(id: string): string {
+export function migrateLegacyAnomalyId(id: string): string {
   const normalizedId = id.startsWith('anomaly-') ? id.slice('anomaly-'.length) : id;
   const matchedType = ANOMALY_TYPES.find(type => {
     const stableSuffix = `-${type}`;
