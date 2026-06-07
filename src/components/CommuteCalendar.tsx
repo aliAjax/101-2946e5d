@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
 import { CalendarDays, ChevronLeft, ChevronRight, X, Filter } from 'lucide-react';
 

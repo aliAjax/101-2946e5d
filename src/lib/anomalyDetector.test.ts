@@ -94,7 +94,7 @@ describe('anomalyDetector', () => {
     });
 
     it('detectInvalidTransportMode - 应检测无效交通方式', () => {
-      const route = createMockRoute({ transportMode: 'airplane' as any });
+      const route = createMockRoute({ transportMode: 'airplane' as CommuteRoute['transportMode'] });
       const anomaly = detectInvalidTransportMode(route);
       expect(anomaly).not.toBeNull();
       expect(anomaly?.type).toBe('invalid_transport_mode');

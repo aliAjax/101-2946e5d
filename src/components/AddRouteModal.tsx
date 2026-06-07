@@ -1,8 +1,8 @@
 import { useState, useRef, useMemo } from 'react';
 import { useCommuteStore } from '../store/commuteStore';
-import { CommuteRoute, TransportMode, TimeOfDay, transportModeLabels, transportModeColors, timeOfDayLabels, timeOfDayColors } from '../types/commute';
-import { parseCSV, CSVParseResult, CSV_FIELD_LABELS, CSVDuplicateRow } from '../lib/csvParser';
-import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle, Navigation, EyeOff, Eye, Copy, RefreshCw } from 'lucide-react';
+import { CommuteRoute, TransportMode, TimeOfDay, transportModeLabels, transportModeColors, timeOfDayColors } from '../types/commute';
+import { parseCSV, CSVParseResult, CSV_FIELD_LABELS } from '../lib/csvParser';
+import { Plus, X, Upload, MapPin, Clock, DollarSign, Users, Calendar, FileText, AlertTriangle, CheckCircle, FileUp, Sun, Sunset, Cloud, HelpCircle, Navigation, EyeOff, Eye, Copy } from 'lucide-react';
 
 type ImportFormat = 'json' | 'csv';
 type CSVStep = 'input' | 'preview';

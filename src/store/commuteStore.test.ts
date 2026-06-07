@@ -199,6 +199,46 @@ describe('commuteStore', () => {
       expect(state.filters.origin).toBeNull();
       expect(state.filters.destination).toBe('望京');
     });
+
+    it('删除地点后仅收藏筛选应只保留仍有效的收藏路线', () => {
+      const routes: CommuteRoute[] = [
+        createMockRoute({ id: 'r1', origin: '中关村', destination: '望京', transportMode: 'subway' }),
+        createMockRoute({ id: 'r2', origin: '国贸', destination: '望京', transportMode: 'bus' }),
+      ];
+      const favorites: FavoriteRoute[] = [
+        {
+          id: 'fav-1',
+          name: '中关村 → 望京',
+          origin: '中关村',
+          destination: '望京',
+          transportMode: 'subway',
+          createdAt: new Date().toISOString(),
+          note: '',
+        },
+        {
+          id: 'fav-2',
+          name: '国贸 → 望京',
+          origin: '国贸',
+          destination: '望京',
+          transportMode: 'bus',
+          createdAt: new Date().toISOString(),
+          note: '',
+        },
+      ];
+
+      useCommuteStore.setState({
+        locations: [mockLocation1, mockLocation2, mockLocation3],
+        routes,
+        favorites,
+        filters: { ...baseInitialState.filters, onlyFavorites: true },
+      });
+
+      useCommuteStore.getState().deleteLocationWithOptions('loc-1', { keepRoutes: false });
+
+      const state = useCommuteStore.getState();
+      expect(state.favorites.map(f => f.id)).toEqual(['fav-2']);
+      expect(state.getFilteredRoutes().map(r => r.id)).toEqual(['r2']);
+    });
   });
 
   describe('收藏筛选联动', () => {
@@ -415,6 +455,33 @@ describe('commuteStore', () => {
       expect(migrateLegacyAnomalyId('route1')).toBe('route1');
     });
 
+    it('从本地存储加载时应迁移旧的ignoredAnomalyIds并保留现有key', async () => {
+      window.localStorage.setItem('commute-data', JSON.stringify({
+        routes: [],
+        selectedRouteId: null,
+        filters: baseInitialState.filters,
+        favorites: [],
+        locations: [mockLocation1],
+        ignoredAnomalyKeys: ['r3-negative_cost'],
+        ignoredAnomalyIds: [
+          'anomaly-r1-negative_cost',
+          'r2-invalid_duration-12345',
+          'r3-negative_cost',
+        ],
+      }));
+
+      vi.resetModules();
+      const { useCommuteStore: freshStore } = await import('./commuteStore');
+      const keys = freshStore.getState().ignoredAnomalyKeys;
+
+      expect(keys).toEqual(expect.arrayContaining([
+        'r1-negative_cost',
+        'r2-invalid_duration',
+        'r3-negative_cost',
+      ]));
+      expect(new Set(keys).size).toBe(keys.length);
+    });
+
     it('更新路线应清除相关的异常忽略key', () => {
       const route = createMockRoute({ id: 'r1' });
       useCommuteStore.setState({
@@ -505,7 +572,6 @@ describe('commuteStore', () => {
       });
 
       useCommuteStore.getState().detectAnomalies();
-      const initialIgnoredCount = useCommuteStore.getState().ignoredAnomalyKeys.length;
 
       useCommuteStore.getState().updateRoute('r1', { cost: 10 });
       vi.runAllTimers();
@@ -677,7 +743,6 @@ describe('commuteStore', () => {
       });
 
       useCommuteStore.getState().calculateRouteScores();
-      const scoresBefore = [...useCommuteStore.getState().routeScores];
 
       useCommuteStore.getState().setScoringWeights({ time: 50, cost: 10, comfort: 20, stability: 20 });
 
