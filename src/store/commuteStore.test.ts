@@ -27,6 +27,7 @@ const emptyInitialState = {
   locations: [],
   favorites: [],
   snapshots: [],
+  filterPresets: [],
 };
 
 describe('commuteStore', () => {
@@ -806,6 +807,338 @@ describe('commuteStore', () => {
 
       useCommuteStore.getState().toggleFavorite(route);
       expect(useCommuteStore.getState().favorites).toHaveLength(0);
+    });
+  });
+
+  describe('筛选预设管理', () => {
+    describe('保存筛选预设', () => {
+      it('保存预设应基于当前筛选条件创建新预设', () => {
+        const testFilters = {
+          ...baseInitialState.filters,
+          transportModes: ['subway', 'bus'],
+          isWeekday: true,
+          isWeekend: null,
+          onlyFavorites: true,
+          timeOfDay: ['morning_peak'],
+          dateRange: { start: '2024-03-01', end: '2024-06-30' },
+        };
+
+        useCommuteStore.setState({
+          filters: testFilters,
+        });
+
+        expect(useCommuteStore.getState().filters.transportModes).toEqual(['subway', 'bus']);
+
+        useCommuteStore.getState().saveFilterPreset('工作日早高峰地铁');
+
+        const state = useCommuteStore.getState();
+        expect(state.filterPresets).toHaveLength(1);
+        expect(state.filterPresets[0].name).toBe('工作日早高峰地铁');
+        expect(state.filterPresets[0].transportModes).toEqual(['subway', 'bus']);
+        expect(state.filterPresets[0].isWeekday).toBe(true);
+        expect(state.filterPresets[0].onlyFavorites).toBe(true);
+        expect(state.filterPresets[0].timeOfDay).toEqual(['morning_peak']);
+        expect(state.filterPresets[0].dateRange).toEqual({ start: '2024-03-01', end: '2024-06-30' });
+        expect(state.filterPresets[0].createdAt).toBeDefined();
+      });
+
+      it('保存多个预设应按顺序排列', () => {
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['subway'] },
+        });
+
+        useCommuteStore.getState().saveFilterPreset('预设1');
+        vi.advanceTimersByTime(1000);
+        useCommuteStore.getState().saveFilterPreset('预设2');
+
+        const state = useCommuteStore.getState();
+        expect(state.filterPresets).toHaveLength(2);
+        expect(state.filterPresets[0].name).toBe('预设1');
+        expect(state.filterPresets[1].name).toBe('预设2');
+      });
+
+      it('保存预设应生成唯一ID', () => {
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters },
+        });
+
+        useCommuteStore.getState().saveFilterPreset('预设A');
+        vi.advanceTimersByTime(1);
+        useCommuteStore.getState().saveFilterPreset('预设B');
+
+        const state = useCommuteStore.getState();
+        expect(state.filterPresets[0].id).not.toBe(state.filterPresets[1].id);
+        expect(state.filterPresets[0].id).toMatch(/^preset-/);
+      });
+
+      it('保存预设应深拷贝筛选条件，后续筛选变化不影响预设', () => {
+        const initialFilters = {
+          ...baseInitialState.filters,
+          transportModes: ['subway'],
+        };
+
+        useCommuteStore.setState({ filters: initialFilters });
+        useCommuteStore.getState().saveFilterPreset('初始预设');
+
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['car'] },
+        });
+
+        const state = useCommuteStore.getState();
+        expect(state.filterPresets[0].transportModes).toEqual(['subway']);
+      });
+    });
+
+    describe('应用筛选预设', () => {
+      it('应用预设应将筛选条件恢复为预设保存时的状态', () => {
+        const presetFilters = {
+          ...baseInitialState.filters,
+          transportModes: ['subway', 'bus'],
+          isWeekday: true,
+          isWeekend: false,
+          onlyFavorites: true,
+          timeOfDay: ['evening_peak'],
+          dateRange: { start: '2024-01-01', end: '2024-12-31' },
+        };
+
+        useCommuteStore.setState({
+          filters: presetFilters,
+        });
+        useCommuteStore.getState().saveFilterPreset('测试预设');
+        const presetId = useCommuteStore.getState().filterPresets[0].id;
+
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['car'] },
+        });
+
+        useCommuteStore.getState().applyFilterPreset(presetId);
+        vi.runAllTimers();
+
+        const state = useCommuteStore.getState();
+        expect(state.filters.transportModes).toEqual(['subway', 'bus']);
+        expect(state.filters.isWeekday).toBe(true);
+        expect(state.filters.isWeekend).toBe(false);
+        expect(state.filters.onlyFavorites).toBe(true);
+        expect(state.filters.timeOfDay).toEqual(['evening_peak']);
+        expect(state.filters.dateRange).toEqual({ start: '2024-01-01', end: '2024-12-31' });
+      });
+
+      it('应用不存在的预设ID应无任何操作', () => {
+        const originalFilters = { ...baseInitialState.filters, transportModes: ['bike'] };
+        useCommuteStore.setState({ filters: originalFilters });
+
+        useCommuteStore.getState().applyFilterPreset('non-existent-id');
+        vi.runAllTimers();
+
+        const state = useCommuteStore.getState();
+        expect(state.filters).toEqual(originalFilters);
+      });
+
+      it('预设按设计不保存origin和destination字段（仅保存通用筛选条件）', () => {
+        useCommuteStore.setState({
+          filters: {
+            ...baseInitialState.filters,
+            origin: '国贸',
+            destination: '西单',
+            transportModes: ['subway'],
+          },
+        });
+        useCommuteStore.getState().saveFilterPreset('测试预设');
+
+        const preset = useCommuteStore.getState().filterPresets[0];
+        expect(preset.transportModes).toEqual(['subway']);
+        expect('origin' in preset).toBe(false);
+        expect('destination' in preset).toBe(false);
+      });
+
+      it('应用预设后应触发统计数据重算', () => {
+        const routes = [
+          createMockRoute({ id: 'r1', transportMode: 'subway', date: '2024-06-01' }),
+          createMockRoute({ id: 'r2', transportMode: 'bus', date: '2024-06-02' }),
+        ];
+
+        useCommuteStore.setState({
+          routes,
+          filters: { ...baseInitialState.filters, transportModes: [] },
+        });
+        useCommuteStore.getState().calculateStatistics();
+
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['subway'] },
+        });
+        useCommuteStore.getState().saveFilterPreset('仅地铁');
+        const presetId = useCommuteStore.getState().filterPresets[0].id;
+
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: [] },
+          statistics: { ...baseInitialState.statistics, totalRoutes: 2 },
+        });
+
+        useCommuteStore.getState().applyFilterPreset(presetId);
+        vi.runAllTimers();
+
+        const state = useCommuteStore.getState();
+        expect(state.statistics.totalRoutes).toBe(1);
+      });
+    });
+
+    describe('删除筛选预设', () => {
+      it('删除预设应从列表中移除指定预设', () => {
+        useCommuteStore.setState({ filters: { ...baseInitialState.filters } });
+        useCommuteStore.getState().saveFilterPreset('预设1');
+        vi.advanceTimersByTime(10);
+        useCommuteStore.getState().saveFilterPreset('预设2');
+        vi.advanceTimersByTime(10);
+        useCommuteStore.getState().saveFilterPreset('预设3');
+
+        const stateBefore = useCommuteStore.getState();
+        expect(stateBefore.filterPresets).toHaveLength(3);
+        const toDeleteId = stateBefore.filterPresets[1].id;
+
+        useCommuteStore.getState().deleteFilterPreset(toDeleteId);
+
+        const stateAfter = useCommuteStore.getState();
+        expect(stateAfter.filterPresets).toHaveLength(2);
+        expect(stateAfter.filterPresets.map(p => p.name)).toEqual(['预设1', '预设3']);
+        expect(stateAfter.filterPresets.find(p => p.id === toDeleteId)).toBeUndefined();
+      });
+
+      it('删除第一个预设应正常工作', () => {
+        useCommuteStore.setState({ filters: { ...baseInitialState.filters } });
+        useCommuteStore.getState().saveFilterPreset('预设1');
+        vi.advanceTimersByTime(10);
+        useCommuteStore.getState().saveFilterPreset('预设2');
+
+        const firstId = useCommuteStore.getState().filterPresets[0].id;
+        useCommuteStore.getState().deleteFilterPreset(firstId);
+
+        const state = useCommuteStore.getState();
+        expect(state.filterPresets).toHaveLength(1);
+        expect(state.filterPresets[0].name).toBe('预设2');
+      });
+
+      it('删除最后一个预设应正常工作', () => {
+        useCommuteStore.setState({ filters: { ...baseInitialState.filters } });
+        useCommuteStore.getState().saveFilterPreset('唯一预设');
+        const onlyId = useCommuteStore.getState().filterPresets[0].id;
+
+        useCommuteStore.getState().deleteFilterPreset(onlyId);
+
+        const state = useCommuteStore.getState();
+        expect(state.filterPresets).toHaveLength(0);
+      });
+
+      it('删除不存在的预设ID应无任何操作', () => {
+        useCommuteStore.setState({ filters: { ...baseInitialState.filters } });
+        useCommuteStore.getState().saveFilterPreset('预设A');
+
+        const stateBefore = useCommuteStore.getState();
+        useCommuteStore.getState().deleteFilterPreset('non-existent-id');
+        const stateAfter = useCommuteStore.getState();
+
+        expect(stateAfter.filterPresets).toEqual(stateBefore.filterPresets);
+      });
+    });
+
+    describe('筛选预设持久化', () => {
+      it('保存预设应同步写入localStorage', () => {
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['subway'] },
+        });
+
+        useCommuteStore.getState().saveFilterPreset('持久化测试');
+
+        const stored = localStorage.getItem('commute-filter-presets');
+        expect(stored).not.toBeNull();
+        const parsed = JSON.parse(stored!);
+        expect(parsed).toHaveLength(1);
+        expect(parsed[0].name).toBe('持久化测试');
+        expect(parsed[0].transportModes).toEqual(['subway']);
+      });
+
+      it('删除预设应同步更新localStorage', () => {
+        useCommuteStore.setState({ filters: { ...baseInitialState.filters } });
+        useCommuteStore.getState().saveFilterPreset('预设1');
+        vi.advanceTimersByTime(10);
+        useCommuteStore.getState().saveFilterPreset('预设2');
+
+        const toDeleteId = useCommuteStore.getState().filterPresets[0].id;
+        useCommuteStore.getState().deleteFilterPreset(toDeleteId);
+
+        const stored = JSON.parse(localStorage.getItem('commute-filter-presets')!);
+        expect(stored).toHaveLength(1);
+        expect(stored[0].name).toBe('预设2');
+      });
+
+      it('页面刷新后应从localStorage加载预设', async () => {
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['car', 'bike'] },
+        });
+        useCommuteStore.getState().saveFilterPreset('刷新测试预设');
+
+        vi.resetModules();
+        const { useCommuteStore: freshStore } = await import('./commuteStore');
+
+        expect(freshStore.getState().filterPresets).toHaveLength(1);
+        expect(freshStore.getState().filterPresets[0].name).toBe('刷新测试预设');
+        expect(freshStore.getState().filterPresets[0].transportModes).toEqual(['car', 'bike']);
+      });
+
+      it('localStorage数据损坏时应返回空数组而不崩溃', () => {
+        localStorage.setItem('commute-filter-presets', 'invalid-json-{broken}');
+
+        useCommuteStore.setState({ filterPresets: [] }, true);
+
+        vi.resetModules();
+        return import('./commuteStore').then(({ useCommuteStore: freshStore }) => {
+          expect(freshStore.getState().filterPresets).toEqual([]);
+        });
+      });
+
+      it('localStorage不存在预设数据时应返回空数组', () => {
+        localStorage.removeItem('commute-filter-presets');
+
+        vi.resetModules();
+        return import('./commuteStore').then(({ useCommuteStore: freshStore }) => {
+          expect(freshStore.getState().filterPresets).toEqual([]);
+        });
+      });
+    });
+
+    describe('筛选预设与其他状态联动', () => {
+      it('应用预设后保存的新预设应基于当前筛选条件', () => {
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['subway'] },
+        });
+        useCommuteStore.getState().saveFilterPreset('地铁预设');
+
+        useCommuteStore.setState({
+          filters: { ...baseInitialState.filters, transportModes: ['bus'] },
+        });
+        useCommuteStore.getState().saveFilterPreset('公交预设');
+
+        expect(useCommuteStore.getState().filterPresets).toHaveLength(2);
+        expect(useCommuteStore.getState().filterPresets[0].transportModes).toEqual(['subway']);
+        expect(useCommuteStore.getState().filterPresets[1].transportModes).toEqual(['bus']);
+      });
+
+      it('重命名地点后应用旧预设不应对预设本身产生影响', () => {
+        useCommuteStore.setState({
+          locations: [mockLocation1, mockLocation2],
+          filters: {
+            ...baseInitialState.filters,
+            origin: '中关村',
+            destination: '望京',
+          },
+        });
+        useCommuteStore.getState().saveFilterPreset('中关村到望京');
+        const presetId = useCommuteStore.getState().filterPresets[0].id;
+
+        useCommuteStore.getState().renameLocation('loc-1', '中关村软件园');
+
+        const presetAfter = useCommuteStore.getState().filterPresets.find(p => p.id === presetId);
+        expect(presetAfter?.name).toBe('中关村到望京');
+      });
     });
   });
 });
