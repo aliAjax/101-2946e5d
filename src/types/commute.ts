@@ -239,5 +239,7 @@ export interface LocationImpact {
   affectedAnomalies: AnomalyRecord[];
   affectedAnomalyIgnoreKeys: string[];
   affectedFilterPresets: FilterPreset[];
+  affectedRouteScores: RouteScore[];
+  selectedScoreKeyAffected: boolean;
   totalAffected: number;
 }

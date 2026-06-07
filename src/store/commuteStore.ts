@@ -479,12 +479,14 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         affectedAnomalies: [],
         affectedAnomalyIgnoreKeys: [],
         affectedFilterPresets: [],
+        affectedRouteScores: [],
+        selectedScoreKeyAffected: false,
         totalAffected: 0,
       };
     }
 
     const locationName = location.name;
-    const { routes, favorites, filters, anomalies, ignoredAnomalyKeys, filterPresets } = get();
+    const { routes, favorites, filters, anomalies, ignoredAnomalyKeys, filterPresets, routeScores, selectedScoreKey } = get();
 
     const affectedRoutes = routes.filter(
       (r) => r.origin === locationName || r.destination === locationName
@@ -522,6 +524,16 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       return false;
     });
 
+    const affectedRouteScores = routeScores.filter(
+      (s) => s.origin === locationName || s.destination === locationName
+    );
+
+    let selectedScoreKeyAffected = false;
+    if (selectedScoreKey) {
+      const [scoreOrigin, scoreDest] = selectedScoreKey.split('-');
+      selectedScoreKeyAffected = scoreOrigin === locationName || scoreDest === locationName;
+    }
+
     const totalAffected =
       affectedRoutes.length +
       affectedFavorites.length +
@@ -529,7 +541,9 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       (affectedFilters.destination ? 1 : 0) +
       affectedAnomalies.length +
       affectedAnomalyIgnoreKeys.length +
-      affectedFilterPresets.length;
+      affectedFilterPresets.length +
+      affectedRouteScores.length +
+      (selectedScoreKeyAffected ? 1 : 0);
 
     return {
       affectedRoutes,
@@ -538,6 +552,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
       affectedAnomalies,
       affectedAnomalyIgnoreKeys,
       affectedFilterPresets,
+      affectedRouteScores,
+      selectedScoreKeyAffected,
       totalAffected,
     };
   },

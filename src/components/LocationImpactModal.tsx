@@ -14,6 +14,8 @@ import {
   Check,
   Trash2,
   Edit3,
+  TrendingUp,
+  MousePointerClick,
 } from 'lucide-react';
 
 type OperationType = 'rename' | 'delete';
@@ -144,10 +146,10 @@ export function LocationImpactModal({
                   )}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-800">保留历史路线</p>
+                  <p className="text-sm font-medium text-gray-800">保留历史数据</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    路线数据将被保留，但地点会被标记为「[已删除] {location.name}」。
-                    适合需要保留历史记录的场景。
+                    路线和收藏数据将被保留，但起终点会被标记为「[已删除] {location.name}」。
+                    评分方案将重新计算，选中状态会被清除。适合需要保留历史记录的场景。
                   </p>
                 </div>
               </label>
@@ -170,10 +172,10 @@ export function LocationImpactModal({
                   )}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-800">同时删除关联路线</p>
+                  <p className="text-sm font-medium text-gray-800">彻底删除所有关联数据</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    所有包含此地点的路线、收藏、异常记录都将被彻底删除。
-                    此操作不可撤销，请谨慎选择。
+                    所有包含此地点的路线、收藏、异常记录、评分方案都将被彻底删除。
+                    相关的筛选条件和选中状态会被自动清理。此操作不可撤销。
                   </p>
                 </div>
               </label>
@@ -287,6 +289,40 @@ export function LocationImpactModal({
                     </div>
                     <span className="text-sm font-bold text-purple-600">
                       {impact.affectedFilterPresets.length}
+                    </span>
+                  </div>
+                )}
+
+                {impact.affectedRouteScores.length > 0 && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
+                      <TrendingUp className="w-4 h-4 text-teal-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800">评分方案</p>
+                      <p className="text-xs text-gray-500">
+                        {impact.affectedRouteScores.length} 个评分方案将重新计算
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-teal-600">
+                      {impact.affectedRouteScores.length}
+                    </span>
+                  </div>
+                )}
+
+                {impact.selectedScoreKeyAffected && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <MousePointerClick className="w-4 h-4 text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800">选中的评分方案</p>
+                      <p className="text-xs text-gray-500">
+                        当前选中的评分方案将被清除
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-orange-600">
+                      1
                     </span>
                   </div>
                 )}
