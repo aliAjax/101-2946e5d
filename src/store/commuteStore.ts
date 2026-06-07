@@ -1,173 +1,34 @@
 import { create } from 'zustand';
-import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, AnomalyType, ScoreExplanation, DimensionExplanation, DimensionComparison, FilterPreset, WeightPresetType, WEIGHT_PRESETS, LocationImpact, Snapshot } from '../types/commute';
+import { CommuteRoute, FilterOptions, CommuteStatistics, FavoriteRoute, ScoringWeights, RouteScore, Location, AnomalyRecord, ScoreExplanation, FilterPreset, WeightPresetType, WEIGHT_PRESETS, LocationImpact, Snapshot } from '../types/commute';
 import { mockRoutes, defaultLocations } from '../data/mockData';
 import { detectAllAnomalies, getAnomalyIgnoreKey } from '../lib/anomalyDetector';
+import {
+  loadFromStorage,
+  saveToStorage,
+  loadPresetsFromStorage,
+  savePresetsToStorage,
+  loadWeightPresetFromStorage,
+  saveWeightPresetToStorage,
+  loadSnapshotsFromStorage,
+  saveSnapshotsToStorage,
+  sanitizeRoute,
+} from './storage';
+import {
+  isWeekday,
+  calculateStatistics,
+} from './statistics';
+import {
+  calculateRouteScores,
+  getScoreExplanation as computeScoreExplanation,
+} from './scoring';
+import {
+  getLocationImpact as computeLocationImpact,
+} from './locationImpact';
+import {
+  createSnapshotData,
+} from './snapshots';
 
-const STORAGE_KEY = 'commute-data';
-const PRESET_STORAGE_KEY = 'commute-filter-presets';
-const WEIGHT_STORAGE_KEY = 'commute-weight-preset';
-const SNAPSHOT_STORAGE_KEY = 'commute-snapshots';
-
-interface PersistedData {
-  routes: CommuteRoute[];
-  selectedRouteId: string | null;
-  filters: FilterOptions;
-  favorites: FavoriteRoute[];
-  locations: Location[];
-  ignoredAnomalyKeys: string[];
-}
-
-type SaveInput = PersistedData & { selectedDate?: string | null };
-
-const VALID_TRANSPORT_MODES: string[] = ['subway', 'bus', 'car', 'bike', 'walk'];
-const VALID_TIME_OF_DAY: string[] = ['morning_peak', 'evening_peak', 'off_peak', 'unknown'];
-const ANOMALY_TYPES: AnomalyType[] = [
-  'negative_cost',
-  'invalid_crowd_level',
-  'same_origin_destination',
-  'date_out_of_range',
-  'duration_outlier',
-  'invalid_transport_mode',
-  'invalid_duration',
-];
-
-function sanitizeRoute(route: CommuteRoute): CommuteRoute {
-  return {
-    ...route,
-    transportMode: VALID_TRANSPORT_MODES.includes(route.transportMode) ? route.transportMode : 'subway',
-    timeOfDay: VALID_TIME_OF_DAY.includes(route.timeOfDay) ? route.timeOfDay : 'unknown',
-  };
-}
-
-export function migrateLegacyAnomalyId(id: string): string {
-  const normalizedId = id.startsWith('anomaly-') ? id.slice('anomaly-'.length) : id;
-  const matchedType = ANOMALY_TYPES.find(type => {
-    const stableSuffix = `-${type}`;
-    return normalizedId.endsWith(stableSuffix) || new RegExp(`${stableSuffix}-\\d+$`).test(normalizedId);
-  });
-
-  if (!matchedType) return normalizedId;
-
-  const typeMarker = `-${matchedType}`;
-  const typeStart = normalizedId.lastIndexOf(typeMarker);
-  return `${normalizedId.slice(0, typeStart)}-${matchedType}`;
-}
-
-function loadPresetsFromStorage(): FilterPreset[] {
-  try {
-    const stored = localStorage.getItem(PRESET_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored) as FilterPreset[];
-    }
-  } catch (e) {
-    console.error('Failed to load presets from localStorage:', e);
-  }
-  return [];
-}
-
-function savePresetsToStorage(presets: FilterPreset[]): void {
-  try {
-    localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets));
-  } catch (e) {
-    console.error('Failed to save presets to localStorage:', e);
-  }
-}
-
-function loadWeightPresetFromStorage(): { presetType: WeightPresetType; weights: ScoringWeights } | null {
-  try {
-    const stored = localStorage.getItem(WEIGHT_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (e) {
-    console.error('Failed to load weight preset from localStorage:', e);
-  }
-  return null;
-}
-
-function saveWeightPresetToStorage(presetType: WeightPresetType, weights: ScoringWeights): void {
-  try {
-    localStorage.setItem(WEIGHT_STORAGE_KEY, JSON.stringify({ presetType, weights }));
-  } catch (e) {
-    console.error('Failed to save weight preset to localStorage:', e);
-  }
-}
-
-function loadSnapshotsFromStorage(): Snapshot[] {
-  try {
-    const stored = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored) as Snapshot[];
-    }
-  } catch (e) {
-    console.error('Failed to load snapshots from localStorage:', e);
-  }
-  return [];
-}
-
-function saveSnapshotsToStorage(snapshots: Snapshot[]): void {
-  try {
-    localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshots));
-  } catch (e) {
-    console.error('Failed to save snapshots to localStorage:', e);
-  }
-}
-
-function loadFromStorage(): PersistedData | null {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const data = JSON.parse(stored) as PersistedData;
-      data.routes = data.routes.map(route => sanitizeRoute({
-        ...route,
-        timeOfDay: route.timeOfDay || 'unknown',
-      }));
-      if (!data.filters.timeOfDay) {
-        data.filters.timeOfDay = [];
-      }
-      if (!data.locations || data.locations.length === 0) {
-        data.locations = defaultLocations;
-      }
-
-      if (!data.ignoredAnomalyKeys) {
-        data.ignoredAnomalyKeys = [];
-      }
-
-      data.favorites = data.favorites.map(fav => ({
-        ...fav,
-        note: fav.note || '',
-      }));
-
-      const legacyData = data as PersistedData & { ignoredAnomalyIds?: string[] };
-      if (legacyData.ignoredAnomalyIds && legacyData.ignoredAnomalyIds.length > 0) {
-        const migratedKeys = legacyData.ignoredAnomalyIds.map(migrateLegacyAnomalyId);
-        data.ignoredAnomalyKeys = [...new Set([...data.ignoredAnomalyKeys, ...migratedKeys])];
-        delete legacyData.ignoredAnomalyIds;
-      }
-
-      return data;
-    }
-  } catch (e) {
-    console.error('Failed to load data from localStorage:', e);
-  }
-  return null;
-}
-
-function saveToStorage(data: SaveInput): void {
-  try {
-    const toSave: PersistedData = {
-      routes: data.routes,
-      selectedRouteId: data.selectedRouteId,
-      filters: data.filters,
-      favorites: data.favorites,
-      locations: data.locations,
-      ignoredAnomalyKeys: data.ignoredAnomalyKeys,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-  } catch (e) {
-    console.error('Failed to save data to localStorage:', e);
-  }
-}
+export { migrateLegacyAnomalyId } from './storage';
 
 const defaultFilters: FilterOptions = {
   isWeekday: null,
@@ -181,6 +42,15 @@ const defaultFilters: FilterOptions = {
 };
 
 const persistedData = loadFromStorage();
+
+const defaultScoringWeights: ScoringWeights = {
+  time: 25,
+  cost: 25,
+  comfort: 25,
+  stability: 25,
+};
+
+const persistedWeightData = loadWeightPresetFromStorage();
 
 interface CommuteState {
   routes: CommuteRoute[];
@@ -248,28 +118,6 @@ interface CommuteState {
   restoreSnapshot: (id: string) => void;
   updateSnapshot: (id: string, updates: Partial<Pick<Snapshot, 'name' | 'description'>>) => void;
 }
-
-function isWeekday(dateStr: string): boolean {
-  const date = new Date(dateStr);
-  const day = date.getDay();
-  return day >= 1 && day <= 5;
-}
-
-function calculateStandardDeviation(values: number[]): number {
-  if (values.length === 0) return 0;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
-  return Math.sqrt(squaredDiffs.reduce((a, b) => a + b, 0) / values.length);
-}
-
-const defaultScoringWeights: ScoringWeights = {
-  time: 25,
-  cost: 25,
-  comfort: 25,
-  stability: 25,
-};
-
-const persistedWeightData = loadWeightPresetFromStorage();
 
 export const useCommuteStore = create<CommuteState>((set, get) => ({
   routes: persistedData?.routes || mockRoutes,
@@ -498,91 +346,18 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   getLocationImpact: (locationId) => {
     const location = get().getLocationById(locationId);
-    if (!location) {
-      return {
-        affectedRoutes: [],
-        affectedFavorites: [],
-        affectedFilters: { origin: false, destination: false },
-        affectedAnomalies: [],
-        affectedAnomalyIgnoreKeys: [],
-        affectedFilterPresets: [],
-        affectedRouteScores: [],
-        selectedScoreKeyAffected: false,
-        totalAffected: 0,
-      };
-    }
-
-    const locationName = location.name;
     const { routes, favorites, filters, anomalies, ignoredAnomalyKeys, filterPresets, routeScores, selectedScoreKey } = get();
-
-    const affectedRoutes = routes.filter(
-      (r) => r.origin === locationName || r.destination === locationName
-    );
-
-    const affectedFavorites = favorites.filter(
-      (f) => f.origin === locationName || f.destination === locationName
-    );
-
-    const affectedFilters = {
-      origin: filters.origin === locationName,
-      destination: filters.destination === locationName,
-    };
-
-    const affectedAnomalies = anomalies.filter(
-      (a) => a.route.origin === locationName || a.route.destination === locationName
-    );
-
-    const affectedRouteIds = new Set(affectedRoutes.map((r) => r.id));
-    const affectedAnomalyIgnoreKeys = ignoredAnomalyKeys.filter((key) => {
-      const routeId = key.split('-').slice(0, -1).join('-');
-      return affectedRouteIds.has(routeId);
+    return computeLocationImpact({
+      location,
+      routes,
+      favorites,
+      filters,
+      anomalies,
+      ignoredAnomalyKeys,
+      filterPresets,
+      routeScores,
+      selectedScoreKey,
     });
-
-    const affectedFilterPresets = filterPresets.filter((preset) => {
-      for (const route of affectedRoutes) {
-        if (
-          preset.transportModes.includes(route.transportMode) ||
-          (preset.isWeekday && isWeekday(route.date)) ||
-          (preset.isWeekend && !isWeekday(route.date))
-        ) {
-          return true;
-        }
-      }
-      return false;
-    });
-
-    const affectedRouteScores = routeScores.filter(
-      (s) => s.origin === locationName || s.destination === locationName
-    );
-
-    let selectedScoreKeyAffected = false;
-    if (selectedScoreKey) {
-      const [scoreOrigin, scoreDest] = selectedScoreKey.split('-');
-      selectedScoreKeyAffected = scoreOrigin === locationName || scoreDest === locationName;
-    }
-
-    const totalAffected =
-      affectedRoutes.length +
-      affectedFavorites.length +
-      (affectedFilters.origin ? 1 : 0) +
-      (affectedFilters.destination ? 1 : 0) +
-      affectedAnomalies.length +
-      affectedAnomalyIgnoreKeys.length +
-      affectedFilterPresets.length +
-      affectedRouteScores.length +
-      (selectedScoreKeyAffected ? 1 : 0);
-
-    return {
-      affectedRoutes,
-      affectedFavorites,
-      affectedFilters,
-      affectedAnomalies,
-      affectedAnomalyIgnoreKeys,
-      affectedFilterPresets,
-      affectedRouteScores,
-      selectedScoreKeyAffected,
-      totalAffected,
-    };
   },
 
   renameLocation: (id, newName) => {
@@ -823,9 +598,9 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
         if (!filters.timeOfDay.includes(routeTimeOfDay)) return false;
       }
       if (filters.onlyFavorites) {
-        const isFav = favorites.some(f => 
-          f.origin === route.origin && 
-          f.destination === route.destination && 
+        const isFav = favorites.some(f =>
+          f.origin === route.origin &&
+          f.destination === route.destination &&
           f.transportMode === route.transportMode
         );
         if (!isFav) return false;
@@ -836,53 +611,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   calculateStatistics: () => {
     const filteredRoutes = get().getFilteredRoutes();
-    if (filteredRoutes.length === 0) {
-      set({
-        statistics: {
-          mostStable: null,
-          cheapest: null,
-          fastest: null,
-          avgDuration: 0,
-          avgCost: 0,
-          totalRoutes: 0,
-        },
-      });
-      return;
-    }
-
-    const routeGroups = new Map<string, CommuteRoute[]>();
-    filteredRoutes.forEach(route => {
-      const key = `${route.origin}-${route.destination}-${route.transportMode}`;
-      if (!routeGroups.has(key)) routeGroups.set(key, []);
-      routeGroups.get(key)!.push(route);
-    });
-
-    let mostStable: CommuteRoute | null = null;
-    let minStdDev = Infinity;
-    
-    routeGroups.forEach((routes) => {
-      const durations = routes.map(r => r.duration);
-      const stdDev = calculateStandardDeviation(durations);
-      if (stdDev < minStdDev) {
-        minStdDev = stdDev;
-        mostStable = routes[0];
-      }
-    });
-
-    const cheapest = filteredRoutes.reduce((min, route) => route.cost < min.cost ? route : min, filteredRoutes[0]);
-    const fastest = filteredRoutes.reduce((min, route) => route.duration < min.duration ? route : min, filteredRoutes[0]);
-    const avgDuration = filteredRoutes.reduce((sum, r) => sum + r.duration, 0) / filteredRoutes.length;
-    const avgCost = filteredRoutes.reduce((sum, r) => sum + r.cost, 0) / filteredRoutes.length;
-
     set({
-      statistics: {
-        mostStable,
-        cheapest,
-        fastest,
-        avgDuration: Math.round(avgDuration),
-        avgCost: Math.round(avgCost * 100) / 100,
-        totalRoutes: filteredRoutes.length,
-      },
+      statistics: calculateStatistics(filteredRoutes),
     });
   },
 
@@ -907,9 +637,9 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   addFavorite: (route, note) => {
     const { favorites } = get();
-    const exists = favorites.some(f => 
-      f.origin === route.origin && 
-      f.destination === route.destination && 
+    const exists = favorites.some(f =>
+      f.origin === route.origin &&
+      f.destination === route.destination &&
       f.transportMode === route.transportMode
     );
     if (exists) return;
@@ -937,18 +667,18 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   isFavorite: (route) => {
     const { favorites } = get();
-    return favorites.some(f => 
-      f.origin === route.origin && 
-      f.destination === route.destination && 
+    return favorites.some(f =>
+      f.origin === route.origin &&
+      f.destination === route.destination &&
       f.transportMode === route.transportMode
     );
   },
 
   toggleFavorite: (route, note) => {
     const { addFavorite, removeFavorite } = get();
-    const existing = get().favorites.find(f => 
-      f.origin === route.origin && 
-      f.destination === route.destination && 
+    const existing = get().favorites.find(f =>
+      f.origin === route.origin &&
+      f.destination === route.destination &&
       f.transportMode === route.transportMode
     );
     if (existing) {
@@ -991,85 +721,7 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
   calculateRouteScores: () => {
     const filteredRoutes = get().getFilteredRoutes();
     const { scoringWeights } = get();
-
-    if (filteredRoutes.length === 0) {
-      set({ routeScores: [] });
-      return;
-    }
-
-    const routeGroups = new Map<string, CommuteRoute[]>();
-    filteredRoutes.forEach(route => {
-      const key = `${route.origin}-${route.destination}-${route.transportMode}`;
-      if (!routeGroups.has(key)) {
-        routeGroups.set(key, []);
-      }
-      routeGroups.get(key)!.push(route);
-    });
-
-    let maxDuration = 0;
-    let maxCost = 0;
-    
-    routeGroups.forEach((routes) => {
-      const avgDuration = routes.reduce((sum, r) => sum + r.duration, 0) / routes.length;
-      const avgCost = routes.reduce((sum, r) => sum + r.cost, 0) / routes.length;
-      maxDuration = Math.max(maxDuration, avgDuration);
-      maxCost = Math.max(maxCost, avgCost);
-    });
-
-    const totalWeight = scoringWeights.time + scoringWeights.cost + scoringWeights.comfort + scoringWeights.stability;
-
-    const scores: RouteScore[] = Array.from(routeGroups.entries()).map(([key, routes]) => {
-      const sampleCount = routes.length;
-      const avgDuration = routes.reduce((sum, r) => sum + r.duration, 0) / sampleCount;
-      const avgCost = routes.reduce((sum, r) => sum + r.cost, 0) / sampleCount;
-      const avgCrowd = routes.reduce((sum, r) => sum + r.crowdLevel, 0) / sampleCount;
-
-      const durations = routes.map(r => r.duration);
-      const stdDev = calculateStandardDeviation(durations);
-
-      const timeScore = maxDuration > 0 ? Math.max(0, 100 - (avgDuration / maxDuration) * 100) : 50;
-      const costScore = maxCost > 0 ? Math.max(0, 100 - (avgCost / maxCost) * 100) : 50;
-      const comfortScore = Math.max(0, 100 - (avgCrowd / 5) * 100);
-      
-      let stabilityScore: number;
-      if (sampleCount < 2) {
-        stabilityScore = 50;
-      } else {
-        const meanDuration = avgDuration;
-        const cv = meanDuration > 0 ? (stdDev / meanDuration) * 100 : 0;
-        stabilityScore = Math.max(0, 100 - cv * 2);
-      }
-
-      const totalScore = totalWeight > 0
-        ? (
-            (timeScore * scoringWeights.time) +
-            (costScore * scoringWeights.cost) +
-            (comfortScore * scoringWeights.comfort) +
-            (stabilityScore * scoringWeights.stability)
-          ) / totalWeight
-        : 0;
-
-      return {
-        key,
-        name: routes[0].name,
-        origin: routes[0].origin,
-        destination: routes[0].destination,
-        transportMode: routes[0].transportMode,
-        avgDuration: Math.round(avgDuration),
-        avgCost: Math.round(avgCost * 100) / 100,
-        avgCrowd: Math.round(avgCrowd * 10) / 10,
-        stabilityScore: Math.round(stabilityScore),
-        sampleCount,
-        totalScore: Math.round(totalScore),
-        timeScore: Math.round(timeScore),
-        costScore: Math.round(costScore),
-        comfortScore: Math.round(comfortScore),
-      };
-    });
-
-    scores.sort((a, b) => b.totalScore - a.totalScore);
-
-    set({ routeScores: scores });
+    set({ routeScores: calculateRouteScores(filteredRoutes, scoringWeights) });
   },
 
   detectAnomalies: () => {
@@ -1187,144 +839,8 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   getScoreExplanation: (key) => {
     const { routeScores } = get();
-    const targetScore = routeScores.find(s => s.key === key);
-    if (!targetScore) return null;
-
-    const sameODScores = routeScores.filter(
-      s => s.origin === targetScore.origin && s.destination === targetScore.destination
-    );
-
     const filteredRoutes = get().getFilteredRoutes();
-    const routeGroups = new Map<string, CommuteRoute[]>();
-    filteredRoutes.forEach(route => {
-      const groupKey = `${route.origin}-${route.destination}-${route.transportMode}`;
-      if (!routeGroups.has(groupKey)) routeGroups.set(groupKey, []);
-      routeGroups.get(groupKey)!.push(route);
-    });
-
-    const targetRoutes = routeGroups.get(key) || [];
-    const sampleCount = targetRoutes.length;
-
-    const durations = targetRoutes.map(r => r.duration);
-    const stdDev = calculateStandardDeviation(durations);
-    const meanDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
-
-    let maxDuration = 0;
-    let maxCost = 0;
-    routeGroups.forEach((routes) => {
-      const avgDur = routes.reduce((sum, r) => sum + r.duration, 0) / routes.length;
-      const avgC = routes.reduce((sum, r) => sum + r.cost, 0) / routes.length;
-      maxDuration = Math.max(maxDuration, avgDur);
-      maxCost = Math.max(maxCost, avgC);
-    });
-
-    const buildComparisons = (
-      dimension: 'time' | 'cost' | 'comfort' | 'stability'
-    ): DimensionComparison[] => {
-      return sameODScores.map(s => {
-        let rawValue = 0;
-        let score = 0;
-        if (dimension === 'time') {
-          rawValue = s.avgDuration;
-          score = s.timeScore;
-        } else if (dimension === 'cost') {
-          rawValue = s.avgCost;
-          score = s.costScore;
-        } else if (dimension === 'comfort') {
-          rawValue = s.avgCrowd;
-          score = s.comfortScore;
-        } else {
-          rawValue = s.stabilityScore;
-          score = s.stabilityScore;
-        }
-        const targetRaw = dimension === 'time' ? targetScore.avgDuration
-          : dimension === 'cost' ? targetScore.avgCost
-          : dimension === 'comfort' ? targetScore.avgCrowd
-          : targetScore.stabilityScore;
-        return {
-          transportMode: s.transportMode,
-          label: s.transportMode === targetScore.transportMode ? '当前方案' : '',
-          score,
-          rawValue,
-          diff: dimension === 'comfort' || dimension === 'stability'
-            ? rawValue - targetRaw
-            : targetRaw - rawValue,
-        };
-      }).sort((a, b) => b.score - a.score);
-    };
-
-    const timeExplanation: DimensionExplanation = {
-      dimension: 'time',
-      score: targetScore.timeScore,
-      formula: maxDuration > 0
-        ? `100 - (${targetScore.avgDuration} ÷ ${Math.round(maxDuration)}) × 100 = ${targetScore.timeScore}`
-        : '数据不足，默认50分',
-      rawValue: targetScore.avgDuration,
-      rawUnit: '分钟',
-      comparisons: buildComparisons('time'),
-      sampleCount,
-      sampleWarning: sampleCount < 3 ? `仅${sampleCount}次记录，时间均值可能不稳定` : null,
-    };
-
-    const costExplanation: DimensionExplanation = {
-      dimension: 'cost',
-      score: targetScore.costScore,
-      formula: maxCost > 0
-        ? `100 - (${targetScore.avgCost} ÷ ${Math.round(maxCost * 100) / 100}) × 100 = ${targetScore.costScore}`
-        : '数据不足，默认50分',
-      rawValue: targetScore.avgCost,
-      rawUnit: '元',
-      comparisons: buildComparisons('cost'),
-      sampleCount,
-      sampleWarning: sampleCount < 3 ? `仅${sampleCount}次记录，费用均值可能不稳定` : null,
-    };
-
-    const comfortExplanation: DimensionExplanation = {
-      dimension: 'comfort',
-      score: targetScore.comfortScore,
-      formula: `100 - (${targetScore.avgCrowd} ÷ 5) × 100 = ${targetScore.comfortScore}`,
-      rawValue: targetScore.avgCrowd,
-      rawUnit: '/5',
-      comparisons: buildComparisons('comfort'),
-      sampleCount,
-      sampleWarning: sampleCount < 3 ? `仅${sampleCount}次记录，拥挤度均值可能不稳定` : null,
-    };
-
-    const cv = meanDuration > 0 ? (stdDev / meanDuration) * 100 : 0;
-    const stabilityExplanation: DimensionExplanation = {
-      dimension: 'stability',
-      score: targetScore.stabilityScore,
-      formula: sampleCount < 2
-        ? '样本不足2次，默认50分（无法计算变异系数）'
-        : `变异系数 ${cv.toFixed(1)}% → 100 - ${cv.toFixed(1)} × 2 = ${targetScore.stabilityScore}`,
-      rawValue: sampleCount < 2 ? 0 : Math.round(stdDev),
-      rawUnit: sampleCount < 2 ? '' : '分钟标准差',
-      comparisons: buildComparisons('stability'),
-      sampleCount,
-      sampleWarning: sampleCount < 2
-        ? '仅1次记录，无法评估稳定性，默认50分不具备参考意义'
-        : sampleCount < 5
-        ? `仅${sampleCount}次记录，稳定性评估可能不够可靠`
-        : null,
-    };
-
-    const overallWarning = sampleCount < 2
-      ? '仅有1次通勤记录，所有评分均基于单次数据，不具备统计意义，请勿将其作为稳定结论'
-      : sampleCount < 5
-      ? `共${sampleCount}次记录，评分有一定参考价值但样本偏少，结论可能随新数据变化`
-      : null;
-
-    return {
-      scoreKey: key,
-      name: targetScore.name,
-      origin: targetScore.origin,
-      destination: targetScore.destination,
-      transportMode: targetScore.transportMode,
-      totalScore: targetScore.totalScore,
-      dimensions: [timeExplanation, costExplanation, comfortExplanation, stabilityExplanation],
-      sameODScores,
-      sampleWarning: overallWarning,
-    };
+    return computeScoreExplanation(key, routeScores, filteredRoutes);
   },
 
   saveFilterPreset: (name) => {
@@ -1373,32 +889,17 @@ export const useCommuteStore = create<CommuteState>((set, get) => ({
 
   createSnapshot: (name, description = '') => {
     const { routes, favorites, locations, filters, ignoredAnomalyKeys, scoringWeights, snapshots } = get();
-    
-    const sortedDates = routes.map(r => r.date).sort();
-    const dateRange = sortedDates.length > 0 
-      ? { start: sortedDates[0], end: sortedDates[sortedDates.length - 1] }
-      : null;
 
-    const newSnapshot: Snapshot = {
-      id: `snap-${Date.now()}`,
+    const newSnapshot = createSnapshotData({
       name,
       description,
-      createdAt: new Date().toISOString(),
-      data: {
-        routes: JSON.parse(JSON.stringify(routes)),
-        favorites: JSON.parse(JSON.stringify(favorites)),
-        locations: JSON.parse(JSON.stringify(locations)),
-        filters: JSON.parse(JSON.stringify(filters)),
-        ignoredAnomalyKeys: JSON.parse(JSON.stringify(ignoredAnomalyKeys)),
-        scoringWeights: JSON.parse(JSON.stringify(scoringWeights)),
-      },
-      summary: {
-        routeCount: routes.length,
-        favoriteCount: favorites.length,
-        locationCount: locations.length,
-        dateRange,
-      },
-    };
+      routes,
+      favorites,
+      locations,
+      filters,
+      ignoredAnomalyKeys,
+      scoringWeights,
+    });
 
     const newSnapshots = [...snapshots, newSnapshot];
     set({ snapshots: newSnapshots });
