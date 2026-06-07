@@ -160,48 +160,59 @@ npm run verify
 
 ### JSON 格式
 
-JSON 导入支持完整的数据结构导入，包含路线、收藏、位置等信息。
+JSON 导入用于批量添加路线记录。当前界面支持粘贴单条路线对象，或粘贴路线对象数组；不支持直接导入包含 `routes`、`favorites`、`locations` 等顶层字段的完整备份对象。
 
-#### 仅导入路线（最简单格式）
-
-```json
-{
-  "routes": [
-    {
-      "id": "route-1",
-      "name": "家 → 公司",
-      "origin": "家",
-      "destination": "公司",
-      "transportMode": "subway",
-      "duration": 45,
-      "cost": 5.5,
-      "crowdLevel": 3,
-      "date": "2024-01-15",
-      "timeOfDay": "morning_peak"
-    }
-  ]
-}
-```
-
-#### 完整数据格式（包含所有数据）
+#### 单条路线对象
 
 ```json
 {
-  "routes": [/* 路线数组 */],
-  "favorites": [/* 收藏路线数组 */],
-  "locations": [/* 地点数组 */],
-  "scores": [/* 评分结果数组 */],
-  "anomalies": [/* 异常记录数组 */]
+  "origin": "家",
+  "destination": "公司",
+  "transportMode": "subway",
+  "duration": 45,
+  "cost": 5.5,
+  "crowdLevel": 3,
+  "date": "2024-01-15",
+  "timeOfDay": "morning_peak"
 }
 ```
+
+#### 多条路线数组
+
+```json
+[
+  {
+    "origin": "家",
+    "destination": "公司",
+    "transportMode": "subway",
+    "duration": 45,
+    "cost": 5.5,
+    "crowdLevel": 3,
+    "date": "2024-01-15",
+    "timeOfDay": "morning_peak"
+  },
+  {
+    "origin": "公司",
+    "destination": "家",
+    "transportMode": "bus",
+    "duration": 60,
+    "cost": 2,
+    "crowdLevel": 4,
+    "date": "2024-01-15",
+    "timeOfDay": "evening_peak"
+  }
+]
+```
+
+> 注意：JSON 导入会重新生成路线 ID 和路线名称，因此导入数据不需要提供 `id` 或 `name` 字段。出发地和目的地必须已经存在于地点库中。
 
 ### 导入操作步骤
 
-1. 点击应用中的数据导入按钮
-2. 选择 CSV 或 JSON 文件
-3. 系统会自动解析并显示预览
-4. 检查数据无误后确认导入
-5. 未知地点会提示添加到位置管理
+1. 点击应用中的添加路线按钮，切换到「批量导入」页签
+2. JSON：选择 JSON 模式，粘贴单条路线对象或路线数组，然后点击「导入数据」
+3. CSV：选择 CSV 模式，粘贴 CSV 内容或上传 `.csv` 文件，然后点击「解析预览」
+4. CSV 预览中检查有效记录、错误行、重复记录和未知地点
+5. 对未知地点补充坐标或选择跳过后，点击「确认导入」
 
 ## 本地数据存储说明
 
@@ -232,7 +243,7 @@ JSON 导入支持完整的数据结构导入，包含路线、收藏、位置等
 ### 数据备份与恢复
 
 - **备份**：使用「数据导出」功能导出 JSON 格式完整数据
-- **恢复**：使用「数据导入」功能导入之前导出的 JSON 文件
+- **恢复路线**：将备份 JSON 中的 `routes` 数组单独复制出来，使用「批量导入」的 JSON 模式导入路线记录
 - **快照**：使用「数据快照」功能在应用内创建恢复点
 
 ### 清除数据
